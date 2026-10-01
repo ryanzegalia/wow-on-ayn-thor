@@ -1,0 +1,218 @@
+diff --git a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+index 9f8f8f79..5122e471 100644
+--- a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
++++ b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+@@ -6,13 +6,16 @@ import android.hardware.display.DisplayManager
+ import android.os.Handler
+ import android.os.Looper
+ import android.view.Display
++import android.view.View
+ import android.view.ViewGroup
+ import android.view.WindowManager
+ import android.widget.FrameLayout
+ import app.gamenative.PluviaApp
++import com.winlator.renderer.GPUImage
+ import com.winlator.renderer.VulkanRenderer
+ import com.winlator.widget.TouchpadView
+ import com.winlator.widget.XServerView
++import com.winlator.xserver.Drawable
+ import com.winlator.xserver.XServer
+ import timber.log.Timber
+ 
+@@ -24,6 +27,12 @@ import timber.log.Timber
+  *
+  * The secondary view is never registered as xServer's renderer and never becomes
+  * PluviaApp.xServerView / PluviaApp.touchpadView.
++ *
++ * Glue mode: WoW draws its login / character select / loading screens (and in-game cinematics)
++ * into a centred 16:9 box -- on a 3160x1080 screen that is x 620..2540, exactly the top panel's
++ * width -- with pure black on both sides. A probe on the Present path spots that letterbox and
++ * then the top panel shows the box at 1:1 while the bottom panel goes black and ignores touch,
++ * so menus sit on the top screen only. In-world the normal split returns.
+  */
+ class SpanDisplayController(
+     private val context: Context,
+@@ -35,7 +44,12 @@ class SpanDisplayController(
+     private var presentation: SpanPresentation? = null
+     private var secondaryView: XServerView? = null
+     private var secondaryRenderer: VulkanRenderer? = null
++    private var secondaryTouch: TouchpadView? = null
+     private var started = false
++    private val mainHandler = Handler(Looper.getMainLooper())
++
++    /** Main-thread state: true while the top panel shows the centred 16:9 glue box. */
++    private var glueMode = false
+ 
+     private val screenW: Int get() = xServer.screenInfo.width.toInt()
+     private val screenH: Int get() = xServer.screenInfo.height.toInt()
+@@ -63,12 +77,15 @@ class SpanDisplayController(
+         primary.setSpanViewport(0, 0, splitX, screenH)
+         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+         update()
++        if (glueX() > 0) primary.setSpanFrameProbe(GlueProbe())
+     }
+ 
+     fun stop() {
+         if (!started) return
+         started = false
+         Timber.tag(TAG).i("stop")
++        primary.setSpanFrameProbe(null)
++        glueMode = false
+         teardown()
+         try {
+             displayManager?.unregisterDisplayListener(displayListener)
+@@ -126,7 +143,7 @@ class SpanDisplayController(
+         r.setMirror(true)
+         r.setVkPresentMode(primary.getVkPresentMode())
+         primary.getUnviewableWMClasses()?.let { r.setUnviewableWMClasses(*it) }
+-        r.setSpanViewport(splitX, 0, srcW, h)
++        r.setSpanViewport(if (glueMode) w else splitX, 0, srcW, h)
+         r.setCursorVisible(primary.isCursorVisible())
+         p.root.addView(
+             view,
+@@ -139,10 +156,12 @@ class SpanDisplayController(
+         PluviaApp.touchpadView?.getGestureConfig()?.let { touch.setGestureConfig(it) }
+         touch.setTouchscreenMode(true)
+         touch.setAbsoluteRegion(splitX, 0, srcW, h)
++        if (glueMode) touch.setOnTouchListener(swallowTouch)
+         p.root.addView(touch)
+ 
+         secondaryView = view
+         secondaryRenderer = r
++        secondaryTouch = touch
+         primary.addMirror(r)
+         Timber.tag(TAG).i("mirror renderer attached (touch region x=%d..%d)", splitX, w)
+     }
+@@ -172,9 +191,86 @@ class SpanDisplayController(
+         }
+         secondaryRenderer = null
+         secondaryView = null
++        secondaryTouch = null
+         Timber.tag(TAG).i("teardown done")
+     }
+ 
++    /** Left edge of WoW's centred 16:9 glue box; 0 when the screen is not wider than 16:9. */
++    private fun glueX(): Int {
++        val boxW = minOf(screenW, screenH * 16 / 9)
++        return if (boxW == splitX) (screenW - boxW) / 2 else 0
++    }
++
++    private val swallowTouch = View.OnTouchListener { _, _ -> true }
++
++    private fun setGlueMode(on: Boolean) {
++        mainHandler.post {
++            if (!started || glueMode == on) return@post
++            glueMode = on
++            val w = screenW
++            val h = screenH
++            val topX = if (on) glueX() else 0
++            Timber.tag(TAG).i("glue mode %s: top src x=%d..%d, bottom %s", on, topX, topX + splitX, if (on) "blank" else "x=$splitX..$w")
++            primary.setSpanViewport(topX, 0, splitX, h)
++            PluviaApp.touchpadView?.setAbsoluteRegion(topX, 0, splitX, h)
++            // Off-canvas source = the clear colour, i.e. a black bottom panel.
++            secondaryRenderer?.setSpanViewport(if (on) w else splitX, 0, w - splitX, h)
++            secondaryTouch?.setOnTouchListener(if (on) swallowTouch else null)
++        }
++    }
++
++    /**
++     * Runs on the Present thread for every WoW frame. Every PROBE_EVERY-th full-screen frame it reads
++     * a few pixels straight from the frame's locked AHardwareBuffer mapping: both side strips pure
++     * black + something lit in the box = glue; otherwise world. All-black frames (fades) count as
++     * neither. ENTER_RUN / EXIT_RUN consecutive verdicts flip the mode, so it never flickers.
++     */
++    private inner class GlueProbe : VulkanRenderer.SpanFrameProbe {
++        private var frame = 0
++        private var glueRun = 0
++        private var worldRun = 0
++        private var inGlue = false
++
++        override fun onFrame(pixmap: Drawable, rootX: Int, rootY: Int) {
++            if (++frame % PROBE_EVERY != 0) return
++            val w = screenW
++            val h = screenH
++            if (rootX != 0 || rootY != 0 || pixmap.width.toInt() != w || pixmap.height.toInt() != h) return
++            val verdict = synchronized(pixmap.renderLock) { classify(pixmap, w, h) }
++            when (verdict) {
++                GLUE -> { glueRun++; worldRun = 0 }
++                WORLD -> { worldRun++; glueRun = 0 }
++                else -> return
++            }
++            if (!inGlue && glueRun >= ENTER_RUN) { inGlue = true; setGlueMode(true) }
++            if (inGlue && worldRun >= EXIT_RUN) { inGlue = false; setGlueMode(false) }
++        }
++
++        private fun classify(pixmap: Drawable, w: Int, h: Int): Int {
++            val img = pixmap.texture as? GPUImage ?: return UNKNOWN
++            val buf = img.virtualData ?: return UNKNOWN
++            val stride = if (img.stride > 0) img.stride.toInt() else w
++            val gx = glueX()
++            if (gx <= 0) return UNKNOWN
++            val limit = buf.capacity()
++            fun lit(x: Int, y: Int): Boolean {
++                val i = (y * stride + x) * 4
++                if (i < 0 || i + 2 >= limit) return false
++                return buf.get(i).toInt() != 0 || buf.get(i + 1).toInt() != 0 || buf.get(i + 2).toInt() != 0
++            }
++            var boxLit = false
++            for (fy in ROWS) {
++                val y = (h * fy).toInt()
++                for (fx in COLS) {
++                    if (lit((gx * fx).toInt(), y)) return WORLD // left strip
++                    if (lit(w - 1 - (gx * fx).toInt(), y)) return WORLD // right strip
++                    if (!boxLit && lit(gx + ((w - 2 * gx) * fx).toInt(), y)) boxLit = true
++                }
++            }
++            return if (boxLit) GLUE else UNKNOWN
++        }
++    }
++
+     private fun findPresentationDisplay(): Display? {
+         val currentDisplay = context.display ?: return null
+         return displayManager
+@@ -186,6 +282,14 @@ class SpanDisplayController(
+ 
+     private companion object {
+         const val TAG = "SpanDisplay"
++        const val PROBE_EVERY = 8
++        const val ENTER_RUN = 3
++        const val EXIT_RUN = 2
++        const val UNKNOWN = 0
++        const val GLUE = 1
++        const val WORLD = 2
++        val ROWS = floatArrayOf(0.08f, 0.3f, 0.5f, 0.7f, 0.92f)
++        val COLS = floatArrayOf(0.1f, 0.35f, 0.6f, 0.9f)
+     }
+ }
+ 
+diff --git a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+index 3c03a0c0..6a4d8439 100644
+--- a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
++++ b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+@@ -510,11 +510,24 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+ 
+     public void onUpdateWindowContentDirect(Window window, Drawable pixmap, short xOff, short yOff) {
+         onUpdateWindowContentDirectImpl(window, pixmap, xOff, yOff);
+-        // Mirrors must finish before we return: Wine reuses the pixmap once the Present path idles it.
+-        if (mirrors.isEmpty()) return;
++        // Mirrors and the probe must finish before we return: Wine reuses the pixmap once the
++        // Present path idles it.
+         for (VulkanRenderer m : mirrors) m.mirrorUpdateWindowContentDirect(window, pixmap, xOff, yOff);
++        SpanFrameProbe probe = spanFrameProbe;
++        if (probe != null && pixmap != null) {
++            probe.onFrame(pixmap, window.getRootX() + xOff, window.getRootY() + yOff);
++        }
++    }
++
++    /** Span mode: sees every Present-path frame (root position of the pixmap) before it is released. */
++    public interface SpanFrameProbe {
++        void onFrame(Drawable pixmap, int rootX, int rootY);
+     }
+ 
++    private volatile SpanFrameProbe spanFrameProbe;
++
++    public void setSpanFrameProbe(SpanFrameProbe probe) { spanFrameProbe = probe; }
++
+     private void mirrorUpdateWindowContentDirect(Window window, Drawable pixmap, short xOff, short yOff) {
+         mirrorCallsInFlight.incrementAndGet();
+         try {

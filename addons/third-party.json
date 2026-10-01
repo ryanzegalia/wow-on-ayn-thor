@@ -1,0 +1,254 @@
+{
+  "schema": 1,
+  "about": "Addons the guide uses but does not ship. This file holds only names, links, versions and checksums. Get each addon from its official page. tools/addons/check_addons.py reads this file.",
+  "tree_sha256_definition": "For every regular file under the addon folder, the line '<sha256 hex>  <path relative to the folder, forward slashes>'. Lines sorted by path (byte order), joined with \\n plus a trailing \\n, then sha256 of that text.",
+  "tested": {
+    "flavor": "retail",
+    "date": "2026-09-23",
+    "where": "Hashes read from the AddOns folder on my Thor. The three zips listed under download_tested unpack to the same trees."
+  },
+  "notes": [
+    "license and license_url were checked on 2026-09-23 against each project's own page. Where two official pages disagree, license_note says so.",
+    "CurseForge links point at each addon's own page (curseforge.com/wow/addons/<slug>). I opened each one in a browser on 2026-09-23 when I checked the licenses."
+  ],
+  "third_party": [
+    {
+      "name": "Baganator",
+      "folders": [
+        "Baganator"
+      ],
+      "author": "plusmouse",
+      "license": "All Rights Reserved",
+      "license_url": "https://www.curseforge.com/wow/addons/baganator/license",
+      "pages": {
+        "curseforge": "https://www.curseforge.com/wow/addons/baganator",
+        "wago": null,
+        "github": null
+      },
+      "curseforge_project_id": 914482,
+      "version_tested": "829",
+      "tree_sha256": {
+        "Baganator": "463c2c42e2da5fd428fd2638cc6b22dc85f974f948b45ebf5b49b93e37c808b4"
+      },
+      "download_tested": {
+        "filename": "Baganator-829.zip",
+        "sha256": "dab5dcffe866c6d234de73bc0a46b80c4f80d17d9dbad1855151e6bab1ecc202",
+        "curseforge_file_id": 8948362
+      },
+      "requires": [
+        "Syndicator"
+      ],
+      "used_for": "dual-screen",
+      "optional": false,
+      "why": "Bag window in the dual-screen layout.",
+      "settings_notes": ""
+    },
+    {
+      "name": "Syndicator",
+      "folders": [
+        "Syndicator"
+      ],
+      "author": "plusmouse",
+      "license": "All Rights Reserved",
+      "license_url": "https://www.curseforge.com/wow/addons/syndicator/license",
+      "pages": {
+        "curseforge": "https://www.curseforge.com/wow/addons/syndicator",
+        "wago": null,
+        "github": null
+      },
+      "curseforge_project_id": 988370,
+      "version_tested": "282",
+      "tree_sha256": {
+        "Syndicator": "afec3558f5e60e7a430cf01a0ac4c280fd5ac693813f10b820f791e823cadbf0"
+      },
+      "download_tested": {
+        "filename": "Syndicator-282.zip",
+        "sha256": "782c2f15e758bd4baf7168f3349fb60acff1be981f27d3ce5483c760b9e3827f",
+        "curseforge_file_id": 8925702
+      },
+      "requires": [],
+      "used_for": "dual-screen",
+      "optional": false,
+      "why": "Baganator needs it.",
+      "settings_notes": ""
+    },
+    {
+      "name": "Leatrix Maps",
+      "folders": [
+        "Leatrix_Maps"
+      ],
+      "author": "Leatrix",
+      "license": "All Rights Reserved",
+      "license_url": "https://www.curseforge.com/wow/addons/leatrix-maps/license",
+      "pages": {
+        "curseforge": "https://www.curseforge.com/wow/addons/leatrix-maps",
+        "wago": null,
+        "github": null
+      },
+      "curseforge_project_id": 298842,
+      "version_tested": "12.1.06",
+      "tree_sha256": {
+        "Leatrix_Maps": "887da209e62aa0c759b5dad851080c4b41517b0a49cc669ea56a54bffc20abd4"
+      },
+      "download_tested": {
+        "filename": "Leatrix_Maps-12.1.06.zip",
+        "sha256": "8a37de342a8293ec5149eb4153b4b23ecfed5339c3b03ab3681466c6289a8e00",
+        "curseforge_file_id": 8953662
+      },
+      "requires": [],
+      "used_for": "dual-screen",
+      "optional": false,
+      "why": "Map window options in the dual-screen layout.",
+      "settings_notes": ""
+    },
+    {
+      "name": "TalentTreeTweaks",
+      "folders": [
+        "TalentTreeTweaks"
+      ],
+      "author": "Numy",
+      "license": "All Rights Reserved",
+      "license_url": "https://www.curseforge.com/wow/addons/talent-tree-tweaks/license",
+      "pages": {
+        "curseforge": "https://www.curseforge.com/wow/addons/talent-tree-tweaks",
+        "wago": "https://addons.wago.io/addons/qKQxm86x",
+        "github": null
+      },
+      "curseforge_project_id": 678792,
+      "version_tested": "v1.14.0",
+      "tree_sha256": {
+        "TalentTreeTweaks": "196e43195f1472e07ff3f2d2060fd074c2b40b72f7e6ee9fdcbbe158cd8d6f86"
+      },
+      "download_tested": null,
+      "requires": [],
+      "used_for": "dual-screen",
+      "optional": true,
+      "why": "Talent window options in the dual-screen layout.",
+      "settings_notes": "Its Scale Talent Frame module (saved as modules.ScaleTalentFrame) must be OFF. When it's on, it fights the talent window scaling. check_addons.py settings reports it. settings --apply shows the one-line change, and --write --wow-closed makes it with a backup first."
+    },
+    {
+      "name": "Glassy",
+      "folders": [
+        "Glassy"
+      ],
+      "author": "Solessfir (original Glass by mixxorz)",
+      "license": "MIT",
+      "license_url": "https://github.com/Solessfir/Glassy/blob/master/LICENSE",
+      "pages": {
+        "curseforge": "https://www.curseforge.com/wow/addons/glassy",
+        "wago": "https://addons.wago.io/addons/qGYZPRNg",
+        "github": null
+      },
+      "curseforge_project_id": 1695833,
+      "version_tested": "1.9.4",
+      "tree_sha256": {
+        "Glassy": "e3db3702d34e2be44f415aa742d3e7a680dc040ac82c448b9dce14d39e7322a1"
+      },
+      "download_tested": null,
+      "requires": [],
+      "used_for": "both",
+      "optional": true,
+      "why": "Chat UI.",
+      "settings_notes": ""
+    },
+    {
+      "name": "ConsolePort",
+      "folders": [
+        "ConsolePort",
+        "ConsolePort_Bar",
+        "ConsolePort_Config",
+        "ConsolePort_Cursor",
+        "ConsolePort_Keyboard",
+        "ConsolePort_Menu",
+        "ConsolePort_Rings",
+        "ConsolePort_Target",
+        "ConsolePort_World"
+      ],
+      "author": "Sebastian Lindfors",
+      "license": "Artistic-2.0",
+      "license_url": "https://github.com/seblindfors/ConsolePort/blob/master/LICENSE.md",
+      "pages": {
+        "curseforge": "https://www.curseforge.com/wow/addons/console-port",
+        "wago": null,
+        "github": "https://github.com/seblindfors/ConsolePort"
+      },
+      "curseforge_project_id": 91376,
+      "version_tested": "3.2.5",
+      "tree_sha256": {
+        "ConsolePort": "0ede9eb5215aac14b176404a7a164f8baef4c82b7dd83559ce1f9cf4ce15a8b6",
+        "ConsolePort_Bar": "c3953b409126b0f93954ccb88efb9193c38af11c449d59c2a93203b8f1c8e412",
+        "ConsolePort_Config": "0605bbd5e3ef3b611402216085e2703e089b364ce45653c784971e00ec5ed937",
+        "ConsolePort_Cursor": "45a6e178616f3a15fb0c955014caa0bc81dd537d8bf674f162672ff74dd0288b",
+        "ConsolePort_Keyboard": "c3954911f5af19b0c91be02b3b25ea27ff95d7e349b753e7d095308b7e618bfd",
+        "ConsolePort_Menu": "a7975664ad2d37de8f5e4320258756b20666c77ad4e09cbed33a79eaaabdb9cb",
+        "ConsolePort_Rings": "b0a0a3a856c8b118246687041baf939126a7a9b7abf4524bb0c435955c84bacd",
+        "ConsolePort_Target": "c04c520df2f3cdb66527dd9911409c30145f8a1e1f0d013c9e8b819d8c00f9df",
+        "ConsolePort_World": "fe4710363d3638b961e54d398036f902a5a5418c1792560a18e3b0f8467fd3fa"
+      },
+      "download_tested": null,
+      "requires": [],
+      "used_for": "both",
+      "optional": false,
+      "why": "The controller UI. FFBinds writes bindings for ConsolePort's gamepad buttons.",
+      "settings_notes": "In ConsolePort's settings, set the device to Nintendo Switch Pro so the button icons match the Thor's labels."
+    },
+    {
+      "name": "Immersion",
+      "folders": [
+        "Immersion"
+      ],
+      "author": "Sebastian Lindfors",
+      "license": "Artistic-2.0 on GitHub, All Rights Reserved on CurseForge (conflict)",
+      "license_url": "https://github.com/seblindfors/Immersion/blob/master/LICENSE.md",
+      "pages": {
+        "curseforge": "https://www.curseforge.com/wow/addons/immersion",
+        "wago": null,
+        "github": "https://github.com/seblindfors/Immersion"
+      },
+      "curseforge_project_id": 257550,
+      "version_tested": "1.4.59",
+      "tree_sha256": {
+        "Immersion": "16c8b4792cb57ef4a4d18b7f06b1423953338d191941b209262732ba402683df"
+      },
+      "download_tested": null,
+      "requires": [],
+      "used_for": "both",
+      "optional": true,
+      "why": "Dialogue UI.",
+      "settings_notes": "",
+      "license_note": "The GitHub repo and the CurseForge page state different licenses."
+    }
+  ],
+  "own": [
+    {
+      "name": "FFScale",
+      "folders": [
+        "FFScale"
+      ],
+      "path": "addons/FFScale",
+      "version": "1.11.0",
+      "used_for": "both",
+      "why": "Places and scales Blizzard's UI on the 6-inch screen."
+    },
+    {
+      "name": "FFBinds",
+      "folders": [
+        "FFBinds"
+      ],
+      "path": "addons/FFBinds",
+      "version": "1.8.4",
+      "used_for": "both",
+      "why": "Controller bindings on top of ConsolePort."
+    },
+    {
+      "name": "FFSpan",
+      "folders": [
+        "FFSpan"
+      ],
+      "path": "addons/FFSpan",
+      "version": "2.9.0",
+      "used_for": "dual-screen",
+      "why": "Places WoW's windows on the bottom screen."
+    }
+  ]
+}

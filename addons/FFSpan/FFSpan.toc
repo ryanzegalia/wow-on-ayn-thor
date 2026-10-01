@@ -1,0 +1,15 @@
+## Interface: 121500, 121000, 120100, 120007, 120005, 16001, 50504, 40402, 30405, 38000, 20506, 11508, 11509
+## Title: |cff00e5ffFFSpan|r
+## Notes: Thor dual-screen (span) support. Centres the 3D view on a 3160x1080 or 4400x1080 canvas, draws the glue-mode marker, and at 4400 runs the bottom-screen home screen (resident bags, window placement, ConsolePort cursor exclusions) with an exact on/off restore (/ffspan home on|off|status). Dumps frame geometry (/ffspan dump). No-op on a normal 1920x1080 launch. My own code.
+## Version: 2.9.0
+## SavedVariables: FFSpanDB
+## SavedVariablesPerCharacter:
+
+FFSpan.lua
+FFSpan_Glassy.lua
+FFSpan_Micro.lua
+FFSpan_Layout.lua
+FFSpan_Home.lua
+FFSpan_Dump.lua
+FFSpan_Dismiss.lua
+FFSpan_ChatDim.lua

@@ -1,0 +1,41 @@
+diff --git a/build-scripts/build-step-arm64ec.sh b/build-scripts/build-step-arm64ec.sh
+index 3c9bd65ab23..600f24caa1e 100755
+--- a/build-scripts/build-step-arm64ec.sh
++++ b/build-scripts/build-step-arm64ec.sh
+@@ -221,22 +221,22 @@ do
+       "test-bylaws/include_winnt_h.patch"
+ 
+       # 2. Thread Suspension Patches
+-      "test-bylaws/dlls_ntdll_signal_arm64_c.patch"
+-      "test-bylaws/dlls_ntdll_signal_arm64ec_c.patch"
+-      "test-bylaws/dlls_ntdll_signal_x86_64_c.patch"
+-      "test-bylaws/dlls_ntdll_ntdll_spec.patch"
+-      "test-bylaws/dlls_ntdll_ntdll_misc_h.patch"
+-      "test-bylaws/dlls_wow64_process_c.patch"
+-      "test-bylaws/dlls_wow64_wow64_spec.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_ntdll_signal_arm64_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_ntdll_signal_arm64ec_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_ntdll_signal_x86_64_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_ntdll_ntdll_spec.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_ntdll_ntdll_misc_h.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_wow64_process_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_wow64_wow64_spec.patch"
+ 
+       # 3. Process and Virtual Memory Management
+-      "test-bylaws/dlls_wow64_virtual_c.patch"
+-      "test-bylaws/server_process_c.patch"
+-      "test-bylaws/dlls_ntdll_unix_process_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_wow64_virtual_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/server_process_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/dlls_ntdll_unix_process_c.patch"
+ 
+       # 4. Server and Threading Infrastructure
+-      "test-bylaws/server_thread_h.patch"
+-      "test-bylaws/server_thread_c.patch"
++#DROPPED-SUSPEND       "test-bylaws/server_thread_h.patch"
++#DROPPED-SUSPEND       "test-bylaws/server_thread_c.patch"
+       "test-bylaws/dlls_ntdll_unix_thread_c.patch"
+ 
+       # 5. Internal Headers
+
+#BASE 4f1adc72ef1c11d975e619795053ce5502dd16d0

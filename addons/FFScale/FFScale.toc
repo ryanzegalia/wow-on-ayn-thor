@@ -1,0 +1,9 @@
+## Interface: 120100, 50504, 16001
+## Title: FFScale
+## Notes: Edit Mode layout owner for every Thor geometry -- Thor6in (single screen) / ThorSpanHome (4400 dual screen) + gamepad bindings
+## Version: 1.11.0
+## SavedVariables: FFScaleLog, FFScaleGraphicsDB
+
+FFScale.lua
+FFScale_Graphics.lua
+FFScale_Target.lua

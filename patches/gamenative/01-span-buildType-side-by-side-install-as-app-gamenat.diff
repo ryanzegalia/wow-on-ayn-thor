@@ -1,0 +1,20 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 342dfdd7..78a0b8ef 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -178,6 +178,15 @@ android {
+             isShrinkResources = true
+             signingConfig = signingConfigs.getByName("pluvia")
+         }
++        create("span") {
++            initWith(getByName("debug"))
++            applicationIdSuffix = ".span"
++            signingConfig = signingConfigs.getByName("debug")
++            resValue("string", "app_name", "GameNative Span")
++            // :ubuntufs (and any other module dep) only ships debug/release variants;
++            // without this, AGP can't resolve a "span" variant for those modules.
++            matchingFallbacks += listOf("debug")
++        }
+         create("release-gold") {
+             isMinifyEnabled = true
+             isShrinkResources = true

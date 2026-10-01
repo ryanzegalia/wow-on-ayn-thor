@@ -1,0 +1,69 @@
+span on only for a 4400x1080 screen
+
+The spantest build turned span mode (and the home-screen bottom) on for
+every container. The build-type defaults SPAN_DEFAULT / SPAN_BOTTOM_DEFAULT
+now apply only when the container's screen size is 4400x1080, the Thor span
+canvas (1240 home screen + 1920 top panel + 1240 unused). Any other size
+gets the stock fallbacks ("false" / ""), so it runs exactly like stock
+single-screen. An explicit spanDisplay / spanBottom container extra still
+wins, so the rooted span build behaves as before. Builds with
+SPAN_DEFAULT=false (stock, debug, span) are unchanged.
+
+
+---
+
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 23c091da..839051c5 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -191,8 +191,9 @@ android {
+             // without this, AGP can't resolve a "span" variant for those modules.
+             matchingFallbacks += listOf("debug")
+         }
+-        // Rootless span test build: span mode + home-screen bottom layout are ON by default, so a
+-        // user only sets Screen Size = Custom 4400x1080 in the container's own settings.
++        // Rootless span test build: span mode + home-screen bottom layout are ON by default for a
++        // container whose Screen Size is Custom 4400x1080 (XServerScreen isSpanDefaultScreen); any
++        // other size runs like stock single-screen.
+         create("spantest") {
+             initWith(getByName("span"))
+             applicationIdSuffix = ".spantest"
+diff --git a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+index b722b459..7c6134b2 100644
+--- a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
++++ b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+@@ -330,6 +330,12 @@ private fun normalizeProcessName(name: String): String {
+     return if (lower.endsWith(".exe")) lower.removeSuffix(".exe") else lower
+ }
+ 
++/** The Thor span canvas: 1240 (home screen) + 1920 (top panel) + 1240 unused, 1080 high. */
++internal val SPAN_DEFAULT_SCREEN = 4400 to 1080
++
++/** Build-type span defaults apply only to this exact screen size; every other size stays single-screen. */
++internal fun isSpanDefaultScreen(screenSize: String): Boolean = parseScreenSize(screenSize) == SPAN_DEFAULT_SCREEN
++
+ internal fun parseScreenSize(screenSize: String): Pair<Int, Int>? {
+     val parts = screenSize.lowercase(Locale.getDefault()).split("x")
+     if (parts.size != 2) return null
+@@ -1987,12 +1993,18 @@ fun XServerScreen(
+             // setting to switch to the Vulkan renderer.
+             val useGLRenderer = container.graphicsDriver == "virgl" || container.displayRenderer.equals("gl", true)
+             // Span mode (AYN Thor): the X screen spans display 0 (x < splitX) and the presentation display (x >= splitX).
+-            // The fallbacks are build-type defaults (on only in the spantest build); a container extra wins.
+-            val spanEnabled = container.getExtra("spanDisplay", BuildConfig.SPAN_DEFAULT.toString()).equals("true", true) && !useGLRenderer
++            // The fallbacks are build-type defaults (on only in the spantest build), and only when the container's
++            // screen size is the span canvas 4400x1080. Any other size gets the stock fallbacks ("false" / ""), so it
++            // runs exactly like stock single-screen. A container extra still wins.
++            val spanDefaultOn = BuildConfig.SPAN_DEFAULT && isSpanDefaultScreen(container.screenSize)
++            if (BuildConfig.SPAN_DEFAULT) {
++                Timber.tag("SpanDisplay").i("span default %s for screen size %s", if (spanDefaultOn) "on" else "off", container.screenSize)
++            }
++            val spanEnabled = container.getExtra("spanDisplay", spanDefaultOn.toString()).equals("true", true) && !useGLRenderer
+             val spanSplitXPref = container.getExtra("spanSplitX", "1920").trim().toIntOrNull() ?: 1920
+             // What the presentation display shows: "left" = only the canvas's left region (home
+             // screen), anything else / absent = today's two side strips. Validated in the controller.
+-            val spanBottomPref = container.getExtra("spanBottom", BuildConfig.SPAN_BOTTOM_DEFAULT)
++            val spanBottomPref = container.getExtra("spanBottom", if (spanDefaultOn) BuildConfig.SPAN_BOTTOM_DEFAULT else "")
+             val xServerViewInstance: XServerRendererView = if (useGLRenderer) {
+                 XServerViewGL(context, xServerToUse)
+             } else {

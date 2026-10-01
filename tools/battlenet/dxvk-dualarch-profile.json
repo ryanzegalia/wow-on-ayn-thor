@@ -1,0 +1,14 @@
+{
+  "type": "DXVK",
+  "versionName": "3.1.1-arm64-bnet-x86",
+  "versionCode": 0,
+  "description": "Isolated Battle.net stack: original pure ARM64 DXVK 3.1.1-40e0164 for WoW, cached DXVK 2.7.1 i686 for the launcher. Never use ARM64EC DLLs for native WoW.",
+  "files": [
+    {"source": "system32/d3d11.dll", "target": "${system32}/d3d11.dll"},
+    {"source": "system32/dxgi.dll", "target": "${system32}/dxgi.dll"},
+    {"source": "system32/d3d10core.dll", "target": "${system32}/d3d10core.dll"},
+    {"source": "syswow64/d3d11.dll", "target": "${syswow64}/d3d11.dll"},
+    {"source": "syswow64/dxgi.dll", "target": "${syswow64}/dxgi.dll"},
+    {"source": "syswow64/d3d10core.dll", "target": "${syswow64}/d3d10core.dll"}
+  ]
+}

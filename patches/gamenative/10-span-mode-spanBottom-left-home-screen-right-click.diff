@@ -1,0 +1,319 @@
+diff --git a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+index 519fd71d..0802092e 100644
+--- a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
++++ b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+@@ -12,6 +12,7 @@ import android.view.WindowManager
+ import android.widget.FrameLayout
+ import android.widget.LinearLayout
+ import app.gamenative.PluviaApp
++import app.gamenative.data.TouchGestureConfig
+ import com.winlator.renderer.NativeTexture
+ import com.winlator.renderer.VulkanRenderer
+ import com.winlator.widget.TouchpadView
+@@ -24,10 +25,17 @@ import timber.log.Timber
+ /**
+  * Span mode (AYN Thor dual screen): the Wine X screen is wider than the top panel, and the game
+  * view sits in its CENTRE. The primary renderer shows X x in [topX, topX + splitX) at 1:1 on
+- * display 0 (topX = (W - splitX) / 2: 620..2540 on a 3160 screen). The presentation display gets
+- * the two side strips stitched together: its left half shows [0, topX), its right half shows
+- * [topX + splitX, W), each through its own "mirror" XServerView/VulkanRenderer fed by the primary,
+- * each with a touchscreen-mode TouchpadView mapped to its strip.
++ * display 0 (topX = (W - splitX) / 2: 620..2540 on a 3160 screen). Whatever is left over goes to
++ * the presentation display, through "mirror" XServerView/VulkanRenderers fed by the primary, each
++ * with a touchscreen-mode TouchpadView mapped to its strip.
++ *
++ * Two bottom layouts, chosen by the container extra `spanBottom` (see [BottomMode]):
++ *  - `sides` (default, and what an absent/unknown value falls back to): the two side strips
++ *    stitched together, left half = [0, topX), right half = [topX + splitX, W). This is the
++ *    3160x1080 centre-game layout.
++ *  - `left`: only [0, topX), filling the whole panel. With a 4400x1080 screen and splitX 1920 that
++ *    is exactly the 1240 px "home screen" region at 1:1 on the 1240x1080 bottom panel; x >= 3160 is
++ *    then shown nowhere and is expected to stay empty.
+  *
+  * Why centre: a game centres things on its window -- WoW's freelook cursor, crosshair, action
+  * bars, dialogs, and its 16:9 login / character select / loading box -- so with the game view in
+@@ -47,7 +55,11 @@ class SpanDisplayController(
+     private val xServer: XServer,
+     private val primary: VulkanRenderer,
+     private val splitX: Int,
++    bottomPref: String = "",
+ ) {
++    /** What the presentation display shows. */
++    enum class BottomMode { SIDES, LEFT }
++
+     /** One side strip shown on the presentation display. */
+     private class Strip(val srcX: Int, val srcW: Int, val view: XServerView, val renderer: VulkanRenderer, val touch: TouchpadView)
+ 
+@@ -66,6 +78,26 @@ class SpanDisplayController(
+     /** Left edge of the top panel's source rect: the game view is centred on the X screen. */
+     val topX: Int get() = maxOf(0, (screenW - splitX) / 2)
+ 
++    /** What `spanBottom` asked for; [bottomMode] decides what the geometry actually supports. */
++    private val requestedBottom: BottomMode = parseBottomPref(bottomPref)
++
++    /**
++     * `left` needs the supported geometry (the 1920-wide top panel, and a non-empty left region);
++     * anything else falls back to the two-strip layout so a bad extra can never blank the panel.
++     */
++    private fun bottomMode(): BottomMode {
++        if (requestedBottom != BottomMode.LEFT) return BottomMode.SIDES
++        val tx = topX
++        if (splitX != SUPPORTED_SPLIT_X || tx <= 0) {
++            Timber.tag(TAG).w(
++                "spanBottom=left needs splitX=%d and topX>0 but splitX=%d topX=%d (screen %dx%d); using sides",
++                SUPPORTED_SPLIT_X, splitX, tx, screenW, screenH,
++            )
++            return BottomMode.SIDES
++        }
++        return BottomMode.LEFT
++    }
++
+     private val displayListener = object : DisplayManager.DisplayListener {
+         override fun onDisplayAdded(displayId: Int) = update()
+ 
+@@ -113,7 +145,7 @@ class SpanDisplayController(
+         if (!started) return
+         val target = findPresentationDisplay()
+         if (target == null) {
+-            Timber.tag(TAG).w("no presentation display found; only x < %d is visible", splitX)
++            Timber.tag(TAG).w("no presentation display found; only x in [%d, %d) is visible", topX, topX + splitX)
+             teardown()
+             return
+         }
+@@ -124,9 +156,17 @@ class SpanDisplayController(
+         val h = screenH
+         val tx = topX
+         val rightX = tx + splitX
++        val mode = bottomMode()
++        // Left to right across the panel. "left" drops the right-hand strip; the remaining one is
++        // the only child of the row, so it fills the panel.
++        val regions = when (mode) {
++            BottomMode.LEFT -> listOf(0 to tx)
++            BottomMode.SIDES -> listOf(0 to tx, rightX to w - rightX)
++        }.filter { it.second > 0 }
+         Timber.tag(TAG).i(
+-            "display id=%d name=%s mode=%dx%d; bottom = strips x=0..%d + x=%d..%d",
+-            target.displayId, target.name, target.mode.physicalWidth, target.mode.physicalHeight, tx, rightX, w,
++            "display id=%d name=%s mode=%dx%d; bottom mode=%s (requested %s) strips %s",
++            target.displayId, target.name, target.mode.physicalWidth, target.mode.physicalHeight,
++            mode, requestedBottom, regions.joinToString { "x=${it.first}..${it.first + it.second}" },
+         )
+ 
+         val p = SpanPresentation(context, target)
+@@ -147,16 +187,19 @@ class SpanDisplayController(
+         }
+         Timber.tag(TAG).i("presentation shown on display %d", target.displayId)
+ 
+-        // Left half of the panel = left strip, right half = right strip, each at 1:1.
++        // The strips share the panel left to right, weighted by their source width: in "sides" that
++        // is the left half / right half, in "left" the single strip takes all of it. 1:1 as long as
++        // the widths add up to the panel's.
+         val row = LinearLayout(p.context).apply { orientation = LinearLayout.HORIZONTAL }
+         p.root.addView(
+             row,
+             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+         )
+-        val built = ArrayList<Strip>(2)
+-        for ((srcX, srcW) in listOf(0 to tx, rightX to w - rightX)) {
+-            if (srcW <= 0) continue
+-            val strip = buildStrip(p, srcX, srcW, h)
++        // One config object per update, shared by every strip; never the top screen's instance.
++        val bottomGestures = bottomGestureConfig()
++        val built = ArrayList<Strip>(regions.size)
++        for ((srcX, srcW) in regions) {
++            val strip = buildStrip(p, srcX, srcW, h, bottomGestures)
+             if (strip == null) {
+                 Timber.tag(TAG).w("strip XServerView has no VulkanRenderer; dismissing")
+                 built.forEach { primary.removeMirror(it.renderer); it.view.release() }
+@@ -173,9 +216,72 @@ class SpanDisplayController(
+         }
+         strips = built
+         Timber.tag(TAG).i("mirror renderers attached: %s", built.joinToString { "x=${it.srcX}..${it.srcX + it.srcW}" })
++        logPresentationLayout(p, mode, built.sumOf { it.srcW }, 0)
+     }
+ 
+-    private fun buildStrip(p: SpanPresentation, srcX: Int, srcW: Int, h: Int): Strip? {
++    /**
++     * Logs what the presentation root actually got laid out at (the panel is rotated, so its Display
++     * mode is 1080x1240 while the content area is 1240x1080) and warns when the strips will not land
++     * at 1:1: the mirror renderer scales its source rect onto the surface, so a strip whose source is
++     * narrower or wider than the panel is stretched.
++     */
++    private fun logPresentationLayout(p: SpanPresentation, mode: BottomMode, srcW: Int, attempt: Int) {
++        mainHandler.post {
++            if (presentation !== p) return@post
++            val vw = p.root.width
++            val vh = p.root.height
++            if ((vw <= 0 || vh <= 0) && attempt < LAYOUT_LOG_RETRIES) {
++                mainHandler.postDelayed({ logPresentationLayout(p, mode, srcW, attempt + 1) }, LAYOUT_LOG_DELAY_MS)
++                return@post
++            }
++            Timber.tag(TAG).i(
++                "presentation root laid out %dx%d; bottom mode=%s source %dx%d",
++                vw, vh, mode, srcW, screenH,
++            )
++            if (vw <= 0 || vh <= 0) {
++                Timber.tag(TAG).w("presentation root never reported a size; cannot check the strip scale")
++                return@post
++            }
++            if (mode == BottomMode.LEFT && vw != srcW) {
++                Timber.tag(TAG).w("bottom mode=left: strip is %d px wide but the panel is %d px; it will be scaled", srcW, vw)
++            }
++            val srcAspect = srcW.toFloat() / screenH
++            val panelAspect = vw.toFloat() / vh
++            if (kotlin.math.abs(srcAspect - panelAspect) > ASPECT_TOLERANCE) {
++                Timber.tag(TAG).w(
++                    "bottom strip aspect %.3f (%dx%d) differs from the panel's %.3f (%dx%d); the image is distorted",
++                    srcAspect, srcW, screenH, panelAspect, vw, vh,
++                )
++            }
++        }
++    }
++
++    /**
++     * The bottom strips' gestures: a COPY of the top screen's config (never the same object, so
++     * nothing here can change the top screen), normalised for a touchscreen that drives a WoW UI --
++     * tap = left click, drag = left-click drag, long press = right CLICK after 300 ms.
++     * `holdMouseButtonWhileTouching` and double-tap are forced off because both pre-empt the long
++     * press (TouchpadView.handleTsDown: the hold path returns before the long-press timer is
++     * scheduled, and a second nearby tap cancels the timer and emits a double left click).
++     */
++    private fun bottomGestureConfig(): TouchGestureConfig {
++        val top = PluviaApp.touchpadView?.getGestureConfig()
++        if (top == null) Timber.tag(TAG).w("no top-screen gesture config; starting the bottom strips from defaults")
++        return (top ?: TouchGestureConfig()).copy(
++            tapEnabled = true,
++            tapAction = TouchGestureConfig.ACTION_LEFT_CLICK,
++            dragEnabled = true,
++            dragAction = TouchGestureConfig.PAN_LEFT_CLICK_DRAG,
++            holdMouseButtonWhileTouchingEnabled = false,
++            doubleTapEnabled = false,
++            longPressEnabled = true,
++            longPressAction = TouchGestureConfig.ACTION_RIGHT_CLICK,
++            longPressMouseBehavior = TouchGestureConfig.MOUSE_BEHAVIOR_CLICK,
++            longPressDelay = TouchGestureConfig.DEFAULT_DELAY_MS,
++        )
++    }
++
++    private fun buildStrip(p: SpanPresentation, srcX: Int, srcW: Int, h: Int, gestures: TouchGestureConfig): Strip? {
+         val view = XServerView(p.context, xServer, "vulkan")
+         val r = view.renderer as? VulkanRenderer
+         if (r == null) {
+@@ -191,8 +297,8 @@ class SpanDisplayController(
+ 
+         val touch = TouchpadView(p.context, xServer, false)
+         touch.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+-        // Same gestures as the top screen (TouchGestureConfig has no scroll-wheel two-finger-drag action; pinch = wheel).
+-        PluviaApp.touchpadView?.getGestureConfig()?.let { touch.setGestureConfig(it) }
++        // The top screen's gestures, normalised for the bottom panel (see bottomGestureConfig).
++        touch.setGestureConfig(gestures)
+         touch.setTouchscreenMode(true)
+         touch.setAbsoluteRegion(srcX, 0, srcW, h)
+         if (glueMode) touch.setOnTouchListener(swallowTouch)
+@@ -207,6 +313,15 @@ class SpanDisplayController(
+         presentation = null
+         strips = emptyList()
+         s.forEach { primary.removeMirror(it.renderer) }
++        // Same reason as the glue transition: the views go away without an ACTION_UP, so release
++        // anything a finger still holds before they do.
++        for (strip in s) {
++            try {
++                strip.touch.cancelTouchInput()
++            } catch (e: Exception) {
++                Timber.tag(TAG).w(e, "strip touch cancel failed")
++            }
++        }
+         try {
+             p?.root?.removeAllViews()
+         } catch (e: Exception) {
+@@ -252,6 +367,10 @@ class SpanDisplayController(
+             for (s in strips) {
+                 // Off-canvas source = the clear colour, i.e. a black bottom panel.
+                 s.renderer.setSpanViewport(if (on) w else s.srcX, 0, s.srcW, h)
++                // The swallowing listener stops onTouchEvent being called at all, so a finger that is
++                // down right now would never get its ACTION_UP/CANCEL: drop its gesture first, or a
++                // held button (long press, drag) would stay pressed for the whole glue screen.
++                if (on) s.touch.cancelTouchInput()
+                 s.touch.setOnTouchListener(if (on) swallowTouch else null)
+             }
+         }
+@@ -375,6 +494,31 @@ class SpanDisplayController(
+ 
+     private companion object {
+         const val TAG = "SpanDisplay"
++
++        /** The only top-panel width "left" mode is specified for (the Thor's 1920x1080 top panel). */
++        const val SUPPORTED_SPLIT_X = 1920
++        const val EXTRA_LEFT = "left"
++        const val EXTRA_SIDES = "sides"
++        const val LAYOUT_LOG_RETRIES = 5
++        const val LAYOUT_LOG_DELAY_MS = 200L
++        const val ASPECT_TOLERANCE = 0.02f
++
++        /** Absent or unrecognised `spanBottom` -> today's two-strip layout, always logged. */
++        fun parseBottomPref(pref: String): BottomMode {
++            return when (val v = pref.trim().lowercase()) {
++                EXTRA_LEFT -> BottomMode.LEFT
++                EXTRA_SIDES -> BottomMode.SIDES
++                "" -> {
++                    Timber.tag(TAG).i("spanBottom not set; bottom = sides")
++                    BottomMode.SIDES
++                }
++                else -> {
++                    Timber.tag(TAG).w("spanBottom=\"%s\" is not %s or %s; bottom = sides", v, EXTRA_LEFT, EXTRA_SIDES)
++                    BottomMode.SIDES
++                }
++            }
++        }
++
+         const val PROBE_EVERY = 8
+         const val SUMMARY_EVERY = 450 // ~2 min at 30 fps
+         const val ENTER_RUN = 3
+diff --git a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+index e55b6d12..016a5ef0 100644
+--- a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
++++ b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+@@ -1989,6 +1989,9 @@ fun XServerScreen(
+             // Span mode (AYN Thor): the X screen spans display 0 (x < splitX) and the presentation display (x >= splitX).
+             val spanEnabled = container.getExtra("spanDisplay", "false").equals("true", true) && !useGLRenderer
+             val spanSplitXPref = container.getExtra("spanSplitX", "1920").trim().toIntOrNull() ?: 1920
++            // What the presentation display shows: "left" = only the canvas's left region (home
++            // screen), anything else / absent = today's two side strips. Validated in the controller.
++            val spanBottomPref = container.getExtra("spanBottom", "")
+             val xServerViewInstance: XServerRendererView = if (useGLRenderer) {
+                 XServerViewGL(context, xServerToUse)
+             } else {
+@@ -2656,12 +2659,13 @@ fun XServerScreen(
+                         val spanH = spanXServer.screenInfo.height.toInt()
+                         val splitX = spanSplitXPref.coerceIn(1, maxOf(1, spanW - 1))
+                         // start() maps top-screen touches onto the centred game view.
+-                        Timber.tag("SpanDisplay").d("span %dx%d split %d", spanW, spanH, splitX)
++                        Timber.tag("SpanDisplay").d("span %dx%d split %d bottom \"%s\"", spanW, spanH, splitX, spanBottomPref)
+                         SpanDisplayController(
+                             context = context,
+                             xServer = spanXServer,
+                             primary = primaryVk,
+                             splitX = splitX,
++                            bottomPref = spanBottomPref,
+                         ).apply { start() }
+                     }
+                 } else {
+diff --git a/app/src/main/java/com/winlator/widget/TouchpadView.java b/app/src/main/java/com/winlator/widget/TouchpadView.java
+index 21b6fc2f..707a59f6 100644
+--- a/app/src/main/java/com/winlator/widget/TouchpadView.java
++++ b/app/src/main/java/com/winlator/widget/TouchpadView.java
+@@ -565,7 +565,13 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
+         return true;
+     }
+ 
+-    void cancelTouchInput() {
++    /**
++     * Drop every in-flight gesture on this view: pending long-press / hold timers, any mouse button
++     * or pan key still held by a drag or a fired long press, and the deferred tap release.  Safe to
++     * call at any time; it is what an ACTION_CANCEL would do.  Span mode calls it before a bottom
++     * strip starts swallowing touch (glue mode) and on teardown, where no ACTION_CANCEL is delivered.
++     */
++    public void cancelTouchInput() {
+         cancelSimulatedTouchPress();
+         cancelPointerButtonLeft(fingerPointerButtonLeft);
+         cancelPointerButtonRight(fingerPointerButtonRight);

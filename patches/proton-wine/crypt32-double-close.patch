@@ -1,0 +1,55 @@
+crypt32: Don't close the root-store file descriptors twice.
+
+import_certs_from_file() wraps the caller's fd in fdopen() and fclose()s the
+FILE, which closes fd. Its caller import_certs_from_path() then calls
+close(fd) on the same number. If another thread opens a file in between and
+gets that number, the second close() closes the other thread's descriptor.
+On Android, bionic's fdsan aborts the process when that descriptor belongs
+to a FILE* ("attempted to close file descriptor N, expected to be unowned,
+actually owned by FILE*"). The root store is synced on the first ROOT store
+open in a process (for WoW: the first TLS check at Log In), while bionic's
+getaddrinfo() makes a FILE* on every lookup, so WoW died at Log In.
+
+Fix: read through a dup() of fd, so fclose() closes only the duplicate and
+the caller's close(fd) is the only close of fd.
+
+Upstream Wine master (checked 2026-09-24) still has the same code in
+dlls/crypt32/unixlib.c (fdopen/fclose in import_certs_from_file, close(fd)
+in import_certs_from_path); not fixed upstream.
+
+Applies to proton-wine 4f1adc72 (the tree the proton-10.0-1-arm64ec-wow
+package was built from).
+
+diff --git a/dlls/crypt32/unixlib.c b/dlls/crypt32/unixlib.c
+index 5e65302ac9a..543c233c7fd 100644
+--- a/dlls/crypt32/unixlib.c
++++ b/dlls/crypt32/unixlib.c
+@@ -498,16 +498,25 @@ static BOOL base64_to_cert( const char *str )
+     return TRUE;
+ }
+ 
+-/* Reads the file fd, and imports any certificates in it into store. */
++/* Reads the file fd, and imports any certificates in it into store.
++ * The caller owns fd and closes it, so read through a dup(): fclose() on a FILE
++ * made from fd itself closes fd here, the caller then closes the same number
++ * again, and that second close can hit a descriptor another thread has opened
++ * in the meantime (bionic's fdsan aborts the process on it). */
+ static void import_certs_from_file( int fd )
+ {
+-    FILE *fp = fdopen(fd, "r");
++    int fd2 = dup(fd);
++    FILE *fp = fd2 == -1 ? NULL : fdopen(fd2, "r");
+     char line[1024];
+     BOOL in_cert = FALSE;
+     struct DynamicBuffer saved_cert = { 0, 0, NULL };
+     int num_certs = 0;
+ 
+-    if (!fp) return;
++    if (!fp)
++    {
++        if (fd2 != -1) close(fd2);
++        return;
++    }
+     TRACE("\n");
+     while (fgets(line, sizeof(line), fp))
+     {

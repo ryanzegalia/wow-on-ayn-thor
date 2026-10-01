@@ -1,0 +1,136 @@
+diff --git a/src/freedreno/ir3/ir3_nir_opt_preamble.c b/src/freedreno/ir3/ir3_nir_opt_preamble.c
+index 202285c3..58483204 100644
+--- a/src/freedreno/ir3/ir3_nir_opt_preamble.c
++++ b/src/freedreno/ir3/ir3_nir_opt_preamble.c
+@@ -513,8 +513,21 @@ _rematerialize_def(nir_builder *b, struct hash_table *remap_ht,
+ 
+    /* Since the preamble control flow was reconstructed from the original one,
+     * we must be able to find a legal place to insert the instruction.
++    *
++    * FF PATCH: no legal insert block -- in practice that invariant breaks:
++    * retail WoW's large (37-block) fragment shaders on a7xx hit
++    * find_insert_block() == NULL for ~9 shaders per session, and in a release
++    * build the assert below is gone, so nir_after_block(NULL) faulted inside
++    * nir_instr_insert (addr NULL+0x38).  Give up on rematerializing this def
++    * instead: free the clone that was never inserted and return NULL.  Callers
++    * that clone a parent of this def keep an unremapped source, fail their own
++    * dominance check and return NULL too, so the failure propagates up to
++    * ir3_rematerialize_def_for_preamble(), whose caller skips the prefetch.
+     */
+-   assert(insert_block);
++   if (!insert_block) {
++      nir_instr_free(instr);
++      return NULL;
++   }
+    b->cursor = nir_after_block(insert_block);
+    nir_builder_instr_insert(b, instr);
+ 
+@@ -637,8 +650,13 @@ emit_descriptor_prefetch(nir_builder *b, nir_instr *instr, nir_def **descs,
+       /* Since the preamble control flow was reconstructed from the original
+        * one, and the two descriptor defs were used by the same instruction, we
+        * must be able to find a legal place to insert the prefetch.
++       *
++       * FF PATCH: no legal insert block for the prefetch -- same broken
++       * invariant as in _rematerialize_def (retail WoW a7xx fragment shaders);
++       * skip this prefetch instead of faulting on nir_after_block(NULL).
+        */
+-      assert(insert_block);
++      if (!insert_block)
++         return false;
+    }
+ 
+    b->cursor = nir_after_block(insert_block);
+@@ -809,6 +827,7 @@ ir3_nir_opt_prefetch_descriptors(nir_shader *nir, struct ir3_shader_variant *v)
+           * blocks. This is common because we emit the bindless_resource_ir3
+           * intrinsic right before the access.
+           */
++         bool ff_remat_failed = false;
+          for (unsigned i = 0; i < 2; i++) {
+             if (!descs[i])
+                continue;
+@@ -816,8 +835,18 @@ ir3_nir_opt_prefetch_descriptors(nir_shader *nir, struct ir3_shader_variant *v)
+             preamble_descs[i] =
+                ir3_rematerialize_def_for_preamble(&b, descs[i], &instr_set,
+                                                   preamble_defs);
++            if (!preamble_descs[i])
++               ff_remat_failed = true;
+          }
+ 
++         /* FF PATCH: no legal insert block for one of the descriptor chains
++          * (see _rematerialize_def) -- leave this access un-prefetched rather
++          * than emit a prefetch of a NULL def.  Any clones already placed in
++          * the preamble for the partial chain are dead and DCE'd later.
++          */
++         if (ff_remat_failed)
++            continue;
++
+          progress |= emit_descriptor_prefetch(&b, instr, preamble_descs, &state);
+ 
+          if (state.sampler.num_prefetches == MAX_PREFETCHES &&
+diff --git a/src/freedreno/ir3/ir3_sched.c b/src/freedreno/ir3/ir3_sched.c
+index 1fb88bf1..31a9bae7 100644
+--- a/src/freedreno/ir3/ir3_sched.c
++++ b/src/freedreno/ir3/ir3_sched.c
+@@ -505,6 +505,19 @@ check_instr(struct ir3_sched_ctx *ctx, struct ir3_sched_notes *notes,
+          struct ir3_instruction *baryf = ir->baryfs[i];
+          if (baryf->flags & IR3_INSTR_UNUSED)
+             continue;
++         /* FF PATCH: ir->baryfs is SHADER-global, but sched_block() schedules a
++          * single block.  A bary.f that lives in a LATER block can never be
++          * scheduled before this block's kill/demote, so this condition is
++          * unsatisfiable: choose_instr() returns NULL forever, sched_block()
++          * sets ctx->error, and the whole shader fails with "compile failed!".
++          * A bary.f in an EARLIER block is already scheduled, so restricting
++          * the check to the kill's own block is a no-op in the healthy case
++          * while preserving the real hw constraint (end-input must be hit
++          * before the thread dies).  Hit by WoW 1.60.1 arm64's 90-block
++          * fragment shader on a7xx; verified on an AYN Thor 2026-09-20.
++          */
++         if (baryf->block != instr->block)
++            continue;
+          if (!is_scheduled(baryf)) {
+             notes->blocked_kill = true;
+             return false;
+@@ -1222,6 +1235,13 @@ sched_block(struct ir3_sched_ctx *ctx, struct ir3_block *block)
+             d("unscheduled_list:");
+             foreach_instr (instr, &ctx->unscheduled_list)
+                di(instr, "unscheduled: ");
++            /* FF PATCH: in release builds assert(0) and the di() dump above
++             * both compile out, so this path set ctx->error with NOTHING
++             * logged -- "compile failed! ((null):(null))" and no reason.
++             */
++            mesa_loge("ir3_sched: no schedulable instruction (deadlock); "
++                      "addr0_conflict=%d addr1_conflict=%d",
++                      notes.addr0_conflict, notes.addr1_conflict);
+             assert(0);
+             ctx->error = true;
+             return;
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index 0347db46..c59a0893 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -3154,6 +3154,24 @@ tu_shader_create(struct tu_device *dev,
+    shader->variant =
+       ir3_shader_create_variant(ir3_shader, ir3_key, executable_info);
+ 
++   /* FF PATCH: ir3_shader_create_variant() returns NULL when the ir3 compile
++    * fails (e.g. the sched_block() deadlock).  Upstream walks straight into
++    * `switch (shader->variant->type)` below and dereferences NULL -- on the
++    * Thor that faulted at NULL+0x68 inside vkCreateGraphicsPipelines, Wine
++    * turned the SIGSEGV into NTSTATUS c0000005, and winevulkan's assert then
++    * aborted the whole process.  Fail the shader cleanly instead: DXVK copes
++    * with a pipeline that will not compile, it cannot cope with a SIGSEGV.
++    *
++    * vk_free() alone is the correct inverse of tu_shader_init() here -- this
++    * is before tu_upload_shader(), so shader->cs / shader->bo were never set
++    * up and the full tu_shader_destroy() teardown must not be run on them.
++    */
++   if (!shader->variant) {
++      ir3_shader_destroy(ir3_shader);
++      vk_free(&dev->vk.alloc, shader);
++      return VK_ERROR_UNKNOWN;
++   }
++
+    if (ir3_exceeds_safe_constlen(shader->variant)) {
+       struct ir3_shader_key safe_constlen_key = *ir3_key;
+       safe_constlen_key.safe_constlen = true;

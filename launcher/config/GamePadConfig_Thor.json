@@ -1,0 +1,205 @@
+{
+  "headerComments": [
+    "Thor + GameNative face-button position fix.",
+    "Do NOT set labelStyle here -- ConsolePort owns that (Reverse for the Switch Pro preset)."
+  ],
+  "configVersion": 4,
+  "configs": [
+    {
+      "comment": "Thor / GameNative fix for 8224:273 'Odin Controller via GameNative virtual joystick': raw 0<->1 and 2<->3 swapped. GameNative sends Nintendo letters as XInput bits; this puts each letter on its physical position so ConsolePort's Switch Pro preset (Reverse labels) reads correctly. Written 2026-09-21.",
+      "name": "Thor letters-to-positions (Odin Controller via GameNative virtual joystick)",
+      "vendorID": 8224,
+      "productID": 273,
+      "rawButtonMappings": [
+        {
+          "rawIndex": 0,
+          "button": "PAD2"
+        },
+        {
+          "rawIndex": 1,
+          "button": "PAD1"
+        },
+        {
+          "rawIndex": 2,
+          "button": "PAD4"
+        },
+        {
+          "rawIndex": 3,
+          "button": "PAD3"
+        },
+        {
+          "rawIndex": 4,
+          "button": "PADBACK"
+        },
+        {
+          "rawIndex": 5,
+          "button": "PADSYSTEM"
+        },
+        {
+          "rawIndex": 6,
+          "button": "PADFORWARD"
+        },
+        {
+          "rawIndex": 7,
+          "button": "PADLSTICK"
+        },
+        {
+          "rawIndex": 8,
+          "button": "PADRSTICK"
+        },
+        {
+          "rawIndex": 9,
+          "button": "PADLSHOULDER"
+        },
+        {
+          "rawIndex": 10,
+          "button": "PADRSHOULDER"
+        },
+        {
+          "rawIndex": 11,
+          "button": "PADDUP"
+        },
+        {
+          "rawIndex": 12,
+          "button": "PADDDOWN"
+        },
+        {
+          "rawIndex": 13,
+          "button": "PADDLEFT"
+        },
+        {
+          "rawIndex": 14,
+          "button": "PADDRIGHT"
+        },
+        {
+          "rawIndex": 15,
+          "button": "PADSOCIAL"
+        }
+      ],
+      "rawAxisMappings": [
+        {
+          "rawIndex": 0,
+          "axis": "LStickX"
+        },
+        {
+          "rawIndex": 1,
+          "axis": "LStickY"
+        },
+        {
+          "rawIndex": 2,
+          "axis": "RStickX"
+        },
+        {
+          "rawIndex": 3,
+          "axis": "RStickY"
+        },
+        {
+          "rawIndex": 4,
+          "axis": "LTrigger"
+        },
+        {
+          "rawIndex": 5,
+          "axis": "RTrigger"
+        }
+      ]
+    },
+    {
+      "comment": "Thor / GameNative fix for 1118:654 'Wine XInput pad (Xbox 360 ids)': raw 0<->1 and 2<->3 swapped. GameNative sends Nintendo letters as XInput bits; this puts each letter on its physical position so ConsolePort's Switch Pro preset (Reverse labels) reads correctly. Written 2026-09-21.",
+      "name": "Thor letters-to-positions (Wine XInput pad (Xbox 360 ids))",
+      "vendorID": 1118,
+      "productID": 654,
+      "rawButtonMappings": [
+        {
+          "rawIndex": 0,
+          "button": "PAD2"
+        },
+        {
+          "rawIndex": 1,
+          "button": "PAD1"
+        },
+        {
+          "rawIndex": 2,
+          "button": "PAD4"
+        },
+        {
+          "rawIndex": 3,
+          "button": "PAD3"
+        },
+        {
+          "rawIndex": 4,
+          "button": "PADBACK"
+        },
+        {
+          "rawIndex": 5,
+          "button": "PADSYSTEM"
+        },
+        {
+          "rawIndex": 6,
+          "button": "PADFORWARD"
+        },
+        {
+          "rawIndex": 7,
+          "button": "PADLSTICK"
+        },
+        {
+          "rawIndex": 8,
+          "button": "PADRSTICK"
+        },
+        {
+          "rawIndex": 9,
+          "button": "PADLSHOULDER"
+        },
+        {
+          "rawIndex": 10,
+          "button": "PADRSHOULDER"
+        },
+        {
+          "rawIndex": 11,
+          "button": "PADDUP"
+        },
+        {
+          "rawIndex": 12,
+          "button": "PADDDOWN"
+        },
+        {
+          "rawIndex": 13,
+          "button": "PADDLEFT"
+        },
+        {
+          "rawIndex": 14,
+          "button": "PADDRIGHT"
+        },
+        {
+          "rawIndex": 15,
+          "button": "PAD5"
+        }
+      ],
+      "rawAxisMappings": [
+        {
+          "rawIndex": 0,
+          "axis": "LStickX"
+        },
+        {
+          "rawIndex": 1,
+          "axis": "LStickY"
+        },
+        {
+          "rawIndex": 2,
+          "axis": "RStickX"
+        },
+        {
+          "rawIndex": 3,
+          "axis": "RStickY"
+        },
+        {
+          "rawIndex": 4,
+          "axis": "LTrigger"
+        },
+        {
+          "rawIndex": 5,
+          "axis": "RTrigger"
+        }
+      ]
+    }
+  ]
+}

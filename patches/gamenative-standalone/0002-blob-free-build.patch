@@ -1,0 +1,468 @@
+blob-free build
+
+Remove the closed binaries from the tree, per THIRD_PARTY_NOTICES. This patch carries the text changes only. The binary files themselves are deleted by remove-blobs.sh, so no copy of them lives in this repo. The files are redirect.tzst (libredirect.so, libredirect-bionic.so), the modern-flavor
+libredirect-bionic-wx*.so, jniLibs libkgslshim.so and libsteambootstrap.so,
+and the Samsung Performance SDK jar with SamsungPerformanceDriver.kt, the
+PowerManager Samsung branch, the gradle dependency and the proguard lines.
+
+Keep the app working without them:
+- ImageFsInstaller: a missing redirect.tzst is logged and the install
+  continues, so extras.tzst still lands in imagefs.
+- BionicProgramLauncherComponent: the libredirect preload resolver returns
+  null when the file is not on disk, so no LD_PRELOAD entry points at a
+  missing library; Faster external loading is skipped without libredirect.
+- GeneralTab: hide Disable libredirect; Faster external loading is shown
+  off and disabled.
+- THIRD_PARTY_NOTICES: dated note at the top listing what was removed.
+
+libkgslshim (XR only) and libsteambootstrap (real-Steam mode only) were
+already guarded by exists() checks. Only the legacy flavor is supported.
+
+
+---
+
+diff --git a/THIRD_PARTY_NOTICES b/THIRD_PARTY_NOTICES
+index 39a4ef02..4d9654d3 100644
+--- a/THIRD_PARTY_NOTICES
++++ b/THIRD_PARTY_NOTICES
+@@ -1,5 +1,7 @@
+ # Third-Party Notices
+ 
++> **Fork note, 2026-09-24 (WoW Span, an unofficial fork of GameNative).** This fork removes these closed components from its source tree and APK: `libredirect.so` and `libredirect-bionic.so` (the asset `app/src/main/assets/redirect.tzst`), the modern-flavor `libredirect-bionic-wx.so` and `libredirect-bionic-wx-minimal.so`, `libsteambootstrap.so`, `libkgslshim.so`, and the Samsung Performance SDK (`perfsdk-v1.0.0.jar`) together with the code that used it. Their sections below are upstream's text, kept for reference. Without them, "real Steam" launch mode is unavailable, "Faster external loading" is off, and only the legacy flavor is supported.
++
+ This file contains notices for third-party assets and libraries used in this project.
+ 
+ ---
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 839051c5..bb664579 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -527,9 +527,6 @@ dependencies {
+ 
+     implementation("com.auth0.android:jwtdecode:2.0.2")
+ 
+-    // Samsung Performance SDK
+-    implementation(files("src/main/lib/perfsdk-v1.0.0.jar"))
+-
+     "modernXrImplementation"("com.meta.horizon.platform.sdk:core-kotlin:0.2.2")
+     "modernXrImplementation"("com.meta.horizon.platform.sdk:iap-kotlin:0.2.2")
+ }
+diff --git a/app/proguard-rules.pro b/app/proguard-rules.pro
+index b620dbb3..b6ac0043 100644
+--- a/app/proguard-rules.pro
++++ b/app/proguard-rules.pro
+@@ -41,7 +41,3 @@
+ -keep class com.meta.horizon.** { *; }
+ -dontwarn horizon.**
+ -dontwarn com.meta.horizon.**
+-
+-# Samsung Performance SDK (bundled stub jar, referenced by powercontrol Samsung driver)
+--keep class com.samsung.sdk.sperf.** { *; }
+--dontwarn com.samsung.sdk.sperf.**
+diff --git a/app/src/main/java/app/gamenative/powercontrol/PowerManager.kt b/app/src/main/java/app/gamenative/powercontrol/PowerManager.kt
+index 9fd71a4d..f57caa27 100644
+--- a/app/src/main/java/app/gamenative/powercontrol/PowerManager.kt
++++ b/app/src/main/java/app/gamenative/powercontrol/PowerManager.kt
+@@ -12,7 +12,6 @@ import app.gamenative.powercontrol.autotuning.PerformanceAutoTuner
+ import app.gamenative.powercontrol.drivers.NoOpPerformanceDriver
+ import app.gamenative.powercontrol.drivers.PServerDriver
+ import app.gamenative.powercontrol.drivers.PerformanceDriver
+-import app.gamenative.powercontrol.drivers.SamsungPerformanceDriver
+ import app.gamenative.powercontrol.fan.FanController
+ import app.gamenative.powercontrol.metrics.MetricsSnapshot
+ import app.gamenative.powercontrol.metrics.PerformanceMetricsCollector
+@@ -185,16 +184,6 @@ object PowerManager {
+     fun initialize(context: Context) {
+         appContext = context.applicationContext
+         driver = when {
+-            SamsungPerformanceDriver.isSamsungDevice() -> {
+-                val samsungDriver = SamsungPerformanceDriver(appContext)
+-                if (samsungDriver.isDriverSupported()) {
+-                    Timber.tag("PowerManager").i("Using Samsung Performance Driver")
+-                    samsungDriver
+-                } else {
+-                    Timber.tag("PowerManager").w("Samsung device detected but Performance SDK not available")
+-                    NoOpPerformanceDriver()
+-                }
+-            }
+             PServerDriver.checkPServerAvailability() -> {
+                 Timber.tag("PowerManager").i("Using PServer Driver")
+                 PServerDriver(appContext)
+diff --git a/app/src/main/java/app/gamenative/powercontrol/drivers/SamsungPerformanceDriver.kt b/app/src/main/java/app/gamenative/powercontrol/drivers/SamsungPerformanceDriver.kt
+deleted file mode 100644
+index 22e1d0e5..00000000
+--- a/app/src/main/java/app/gamenative/powercontrol/drivers/SamsungPerformanceDriver.kt
++++ /dev/null
+@@ -1,279 +0,0 @@
+-package app.gamenative.powercontrol.drivers
+-
+-import android.content.Context
+-import app.gamenative.PrefManager
+-import app.gamenative.powercontrol.PowerProfile
+-import app.gamenative.powercontrol.autotuning.DeviceGate
+-import app.gamenative.powercontrol.profiles.CpuGovernor
+-import app.gamenative.powercontrol.profiles.PerformancePreset
+-import com.samsung.sdk.sperf.CustomParams
+-import com.samsung.sdk.sperf.PerformanceManager
+-import com.samsung.sdk.sperf.SPerf
+-import timber.log.Timber
+-
+-class SamsungPerformanceDriver(private val context: Context) : PerformanceDriver() {
+-
+-    companion object {
+-        private const val TAG = "SamsungPerformanceDriver"
+-
+-        private const val DEFAULT_TIMEOUT_MS = 0
+-
+-        private const val CPU_LEVEL_MIN = 0
+-        private const val CPU_LEVEL_MAX = 4
+-        private const val GPU_LEVEL_MIN = 0
+-        private const val GPU_LEVEL_MAX = 4
+-
+-        private const val BUS_LEVEL_MIN = 0
+-        private const val BUS_LEVEL_MAX = 4
+-
+-        /**
+-         * Check if device is a Samsung device
+-         * This is a quick check before attempting SDK initialization
+-         */
+-        fun isSamsungDevice(): Boolean {
+-            return android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+-        }
+-    }
+-
+-    private val performanceManager: PerformanceManager?
+-    private var isSamsungSdkAvailable: Boolean = false
+-
+-    private var currentCpuMinLevel: Int = CPU_LEVEL_MIN
+-    private var currentCpuMaxLevel: Int = CPU_LEVEL_MAX
+-    private var currentGpuMinLevel: Int = GPU_LEVEL_MIN
+-    private var currentGpuMaxLevel: Int = GPU_LEVEL_MAX
+-    private var currentBusMinLevel: Int = BUS_LEVEL_MIN
+-    private var currentBusMaxLevel: Int = BUS_LEVEL_MAX
+-
+-    init {
+-        performanceManager = try {
+-            SPerf.setDebugModeEnabled(false)
+-            SPerf.initialize(context)
+-            val pm = PerformanceManager.getInstance()
+-            isSamsungSdkAvailable = true
+-            Timber.tag(TAG).i("Samsung Performance SDK initialized successfully")
+-            pm
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).w("Samsung Performance SDK not available: ${e.message}")
+-            null
+-        }
+-    }
+-
+-    override fun isDriverSupported(): Boolean {
+-        return isSamsungSdkAvailable
+-    }
+-
+-    override fun isGpuSupported(): Boolean {
+-        return isSamsungSdkAvailable
+-    }
+-
+-    override fun isBusSupported(): Boolean {
+-        return isSamsungSdkAvailable
+-    }
+-
+-    override fun getDisplayUnit(): DisplayUnit {
+-        return DisplayUnit.INTEGER
+-    }
+-
+-    override fun start() {
+-        // No-op for Samsung driver
+-        // Performance controls are started individually by setMinCpuValue, setMaxCpuValue, etc.
+-        // Each setter calls performanceManager.start(params) with specific CustomParams
+-        if (!isDriverSupported()) return
+-        Timber.tag(TAG).d("Samsung Performance Driver ready (controls started by individual setters)")
+-    }
+-
+-    override fun stop() {
+-        if (!isDriverSupported()) return
+-
+-        try {
+-            performanceManager?.stop()
+-            Timber.tag(TAG).d("Stopped Samsung Performance Manager")
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).e(e, "Failed to stop Samsung Performance Manager")
+-        }
+-    }
+-
+-    override fun getCurrentMinCpuValue(): Long {
+-        return currentCpuMinLevel.toLong()
+-    }
+-
+-    override fun getCurrentMaxCpuValue(): Long {
+-        return currentCpuMaxLevel.toLong()
+-    }
+-
+-    override fun getAvailableCpuFrequencies(): List<Long> {
+-        return (CPU_LEVEL_MIN..CPU_LEVEL_MAX).map { it.toLong() }
+-    }
+-
+-    override fun setMinCpuValue(value: Long): Boolean {
+-        if (!isDriverSupported()) return false
+-
+-        return try {
+-            val level = value.toInt().coerceIn(CPU_LEVEL_MIN, CPU_LEVEL_MAX)
+-
+-            val params = CustomParams()
+-            params.add(CustomParams.TYPE_CPU_MIN, level, DEFAULT_TIMEOUT_MS)
+-
+-            performanceManager?.start(params)
+-            currentCpuMinLevel = level
+-
+-            Timber.tag(TAG).d("Set CPU min level to $level")
+-            true
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).e(e, "Failed to set CPU min level")
+-            false
+-        }
+-    }
+-
+-    override fun setMaxCpuValue(value: Long): Boolean {
+-        if (!isDriverSupported()) return false
+-
+-        return try {
+-            val level = value.toInt().coerceIn(CPU_LEVEL_MIN, CPU_LEVEL_MAX)
+-
+-            val params = CustomParams()
+-            params.add(CustomParams.TYPE_CPU_MAX, level, DEFAULT_TIMEOUT_MS)
+-
+-            performanceManager?.start(params)
+-            currentCpuMaxLevel = level
+-
+-            Timber.tag(TAG).d("Set CPU max level to $level")
+-            true
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).e(e, "Failed to set CPU max level")
+-            false
+-        }
+-    }
+-
+-    override fun getCurrentGpuValue(): Long {
+-        return currentGpuMinLevel.toLong()
+-    }
+-
+-    override fun getAvailableGpuFrequencies() = emptyList<Long>()
+-
+-    override fun getCurrentMinGpuPowerLevel(): Int {
+-        return currentGpuMinLevel
+-    }
+-
+-    override fun getCurrentMaxGpuPowerLevel(): Int {
+-        return currentGpuMaxLevel
+-    }
+-
+-    override fun getNumGpuPowerLevels(): Int {
+-        return GPU_LEVEL_MAX - GPU_LEVEL_MIN + 1
+-    }
+-
+-    override fun setMinGpuPowerLevel(level: Int): Boolean {
+-        if (!isDriverSupported()) return false
+-
+-        return try {
+-            val gpuLevel = level.coerceIn(GPU_LEVEL_MIN, GPU_LEVEL_MAX)
+-
+-            val params = CustomParams()
+-            params.add(CustomParams.TYPE_GPU_MIN, gpuLevel, DEFAULT_TIMEOUT_MS)
+-
+-            performanceManager?.start(params)
+-            currentGpuMinLevel = gpuLevel
+-
+-            Timber.tag(TAG).d("Set GPU min level to $gpuLevel")
+-            true
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).e(e, "Failed to set GPU min level")
+-            false
+-        }
+-    }
+-
+-    override fun setMaxGpuPowerLevel(level: Int): Boolean {
+-        if (!isDriverSupported()) return false
+-
+-        return try {
+-            val gpuLevel = level.coerceIn(GPU_LEVEL_MIN, GPU_LEVEL_MAX)
+-
+-            val params = CustomParams()
+-            params.add(CustomParams.TYPE_GPU_MAX, gpuLevel, DEFAULT_TIMEOUT_MS)
+-
+-            performanceManager?.start(params)
+-            currentGpuMaxLevel = gpuLevel
+-
+-            Timber.tag(TAG).d("Set GPU max level to $gpuLevel")
+-            true
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).e(e, "Failed to set GPU max level")
+-            false
+-        }
+-    }
+-
+-    override fun getCurrentMinBusLevel(): Int {
+-        return currentBusMinLevel
+-    }
+-
+-    override fun getCurrentMaxBusLevel(): Int {
+-        return currentBusMaxLevel
+-    }
+-
+-    override fun getNumBusLevels(): Int {
+-        return BUS_LEVEL_MAX - BUS_LEVEL_MIN + 1
+-    }
+-
+-    override fun setMinBusLevel(level: Int): Boolean {
+-        if (!isBusSupported()) return false
+-
+-        return try {
+-            val busLevel = level.coerceIn(BUS_LEVEL_MIN, BUS_LEVEL_MAX)
+-
+-            val params = CustomParams()
+-            params.add(CustomParams.TYPE_BUS_MIN, busLevel, DEFAULT_TIMEOUT_MS)
+-
+-            performanceManager?.start(params)
+-            currentBusMinLevel = busLevel
+-
+-            Timber.tag(TAG).d("Set RAM bus min level to $busLevel")
+-            true
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).e(e, "Failed to set RAM bus min level")
+-            false
+-        }
+-    }
+-
+-    override fun setMaxBusLevel(level: Int): Boolean {
+-        if (!isBusSupported()) return false
+-
+-        return try {
+-            val busLevel = level.coerceIn(BUS_LEVEL_MIN, BUS_LEVEL_MAX)
+-
+-            val params = CustomParams()
+-            params.add(CustomParams.TYPE_BUS_MAX, busLevel, DEFAULT_TIMEOUT_MS)
+-
+-            performanceManager?.start(params)
+-            currentBusMaxLevel = busLevel
+-
+-            Timber.tag(TAG).d("Set RAM bus max level to $busLevel")
+-            true
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).e(e, "Failed to set RAM bus max level")
+-            false
+-        }
+-    }
+-
+-    override fun getDefaultProfile(): PowerProfile {
+-        // Samsung driver uses integer levels (0-4)
+-        // Default: Balanced profile (full range)
+-
+-        return PowerProfile(
+-            enablePowerControl = PrefManager.powerControlDefaultEnabled,
+-            adaptiveFpsCapEnabled = DeviceGate.isDeviceSupported(),
+-            enableAutoTuning = false,
+-            enablePerClusterTuning = false,
+-            enableGamePinning = false,
+-            name = PerformancePreset.BALANCED.displayName,
+-            governor = CpuGovernor.SCHEDUTIL, // Samsung doesn't use governors, but we need a value
+-            minCpuFreq = 0, // CPU level 0
+-            maxCpuFreq = 4, // CPU level 4
+-            minGpuPowerLevel = 0, // GPU level 0
+-            maxGpuPowerLevel = 4,  // GPU level 4
+-            minBusLevel = 0,
+-            maxBusLevel = 4
+-        )
+-    }
+-}
+diff --git a/app/src/main/java/app/gamenative/ui/component/dialog/GeneralTab.kt b/app/src/main/java/app/gamenative/ui/component/dialog/GeneralTab.kt
+index 709a1bfc..f13e451c 100644
+--- a/app/src/main/java/app/gamenative/ui/component/dialog/GeneralTab.kt
++++ b/app/src/main/java/app/gamenative/ui/component/dialog/GeneralTab.kt
+@@ -403,27 +403,17 @@ fun GeneralTabContent(
+                     }
+                 },
+             )
+-            SettingsSwitch(
+-                colors = settingsTileColorsAlt(),
+-                title = { Text(text = stringResource(R.string.disable_libredirect_title)) },
+-                subtitle = { Text(text = stringResource(R.string.disable_libredirect_subtitle)) },
+-                state = config.disableLibredirect,
+-                onCheckedChange = {
+-                    state.config.value = if (it) {
+-                        config.copy(disableLibredirect = true, fasterExternalLoading = false)
+-                    } else {
+-                        config.copy(disableLibredirect = false)
+-                    }
+-                },
+-            )
++            // Blob-free fork: libredirect is not shipped, so "Disable libredirect" is hidden.
+         }
++        // Blob-free fork: "Faster external loading" needs libredirect, so it is shown off and disabled
++        // (the bionic launcher also ignores it when no libredirect is preloaded).
+         SettingsSwitch(
+             colors = settingsTileColorsAlt(),
+-            enabled = !config.disableLibredirect,
++            enabled = false,
+             title = { Text(text = stringResource(R.string.faster_external_loading_title)) },
+             subtitle = { Text(text = stringResource(R.string.faster_external_loading_subtitle)) },
+-            state = config.fasterExternalLoading,
+-            onCheckedChange = { state.config.value = config.copy(fasterExternalLoading = it) },
++            state = false,
++            onCheckedChange = { },
+         )
+         val steamTypeItems = listOf("Normal", "Light", "Ultra Light")
+         val currentSteamTypeIndex = when (config.steamType.lowercase()) {
+diff --git a/app/src/main/java/com/winlator/xenvironment/ImageFsInstaller.java b/app/src/main/java/com/winlator/xenvironment/ImageFsInstaller.java
+index a9ef65cb..22341dbf 100644
+--- a/app/src/main/java/com/winlator/xenvironment/ImageFsInstaller.java
++++ b/app/src/main/java/com/winlator/xenvironment/ImageFsInstaller.java
+@@ -200,8 +200,9 @@ public abstract class ImageFsInstaller {
+                     TarCompressorUtils.Type.ZSTD,      // you said .tzst
+                     in, imagefs);                      // helper already exists in the project
+         } catch (IOException e) {
+-            Log.e("ImageFsInstaller", "redirect deploy failed", e);
+-            return;
++            // Blob-free fork: redirect.tzst (the closed libredirect shims) is not shipped. Log and
++            // keep going so extras.tzst below still installs.
++            Log.w("ImageFsInstaller", "redirect.tzst not deployed, continuing without libredirect", e);
+         }
+ 
+         // ➌  Make sure the new libs are world-readable / executable
+diff --git a/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java b/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java
+index cc261f3b..55842fc8 100644
+--- a/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java
++++ b/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java
+@@ -87,13 +87,22 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
+     // back to the W^X-only minimal shim (still required to run Wine on a strict
+     // W^X kernel) and legacy preloads nothing. Returns null to preload nothing.
+     private String resolveLibredirectPreload(ImageFs imageFs) {
++        String path;
+         if (container != null && container.isDisableLibredirect()) {
+-            if (BuildConfig.MODERN_ANDROID) {
+-                return imageFs.getLibDir() + "/libredirect-bionic-wx-minimal.so";
++            if (!BuildConfig.MODERN_ANDROID) {
++                return null;
+             }
++            path = imageFs.getLibDir() + "/libredirect-bionic-wx-minimal.so";
++        } else {
++            path = imageFs.getLibDir() + "/" + BuildConfig.PRELOAD_BIONIC_SO;
++        }
++        // Blob-free fork: the closed libredirect shims are not shipped. Never put a library
++        // that is not on disk into LD_PRELOAD (the linker would refuse to start Wine).
++        if (!new File(path).exists()) {
++            android.util.Log.w("BionicProgramLauncher", "libredirect not present, preloading none: " + path);
+             return null;
+         }
+-        return imageFs.getLibDir() + "/" + BuildConfig.PRELOAD_BIONIC_SO;
++        return path;
+     }
+ 
+     /** Numeric Steam appid for the game in this container (e.g. "221380").
+@@ -329,7 +338,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
+         envVars.put("EVSHIM_WINE", 1);
+         envVars.put("EVSHIM_SHM_NAME", "controller-shm0");
+ 
+-        if (container != null && container.isFasterExternalLoading()) {
++        if (container != null && container.isFasterExternalLoading() && replacePath != null) { // needs libredirect
+             String ffpGameDir = null;
+             for (String[] drive : Container.drivesIterator(container.getDrives())) {
+                 if (drive[0].equals("A")) {

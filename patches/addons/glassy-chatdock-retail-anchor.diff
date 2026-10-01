@@ -1,0 +1,20 @@
+--- a/Glassy/Glassy/Components/ChatDock.lua
++++ b/Glassy/Glassy/Components/ChatDock.lua
+@@ -216,7 +216,7 @@
+     end
+   end
+ 
+-  if not self:IsHooked(self.scrollFrame, "SetPoint") then
++  if Constants.ENV ~= "retail" and not self:IsHooked(self.scrollFrame, "SetPoint") then
+     Utils.hookPresentation(self, self.scrollFrame, "SetPoint", function (frame, point, relativeTo, relativePoint, xOffset, yOffset)
+       if point == "BOTTOMRIGHT" then
+         yOffset = (yOffset or 0) + 5
+@@ -263,7 +263,7 @@
+   end
+ 
+   -- Correct the anchor that Blizzard applied before Glassy installed its hook.
+-  if bottomPoint then
++  if Constants.ENV ~= "retail" and bottomPoint then
+     self.scrollFrame:SetPoint(bottomPoint, bottomRelativeTo, bottomRelativePoint, bottomX, bottomY)
+   end
+ 

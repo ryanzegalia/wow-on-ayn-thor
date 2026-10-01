@@ -1,0 +1,11 @@
+--- a/ConsolePort_Menu/Model/Buttons.lua
++++ b/ConsolePort_Menu/Model/Buttons.lua
+@@ -242,7 +242,7 @@
+ } end;
+ 
+ ---------------------------------------------------------------
+---[[ Housing Dashboard ]] if HousingMicroButton then _{
++--[[ Housing Dashboard ]] if HousingMicroButton and HousingFramesUtil and type(HousingFramesUtil.ToggleHousingDashboard) == "function" then _{
+ ---------------------------------------------------------------
+ 	text  = BINDING_NAME_TOGGLEHOUSINGDASHBOARD;
+ 	atlas = 'housing-dashboard-homestone-icon';

@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 560" width="1360" height="560" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">The bottom screen's home layout and where windows open</title>
+  <desc id="d">Three drawings of the 1240 by 1080 bottom screen. One: nothing open. Quest tracker top-left, chat bottom-left, minimap top-right, bags always open in a column under the minimap. Two: a companion window such as the character pane or a vendor opens left of the bags, and the bags stay open. Three: a page window such as the map or the spellbook takes the whole bottom screen.</desc>
+  <!--
+    Each panel is the bottom screen in real pixels (1240 x 1080, top-left origin, y down),
+    drawn at 1/3 scale. Numbers come from the layout code, at UI scale 1.0, where one UI unit
+    is 1080/768 = 1.40625 px (FFScale 1.8.3, FFScale.lua lines 75-94):
+
+      FFScale.lua lines 255-282 (the HOME table): margin 16, gap 12, minimap Size 130 % when a
+        bag addon is present (150 % without), bag column at most 0.70 of the home width,
+        MinimapCluster 198 x 220 UI units at Size 100 (marked in the code as a seed value to
+        re-measure), bottom bar 40 UI units, chat 300 px.
+      FFScale.lua lines 303-519 (buildHomeTargets):
+        minimap     = 198 * 1.40625 * 1.30 = 362 px wide, 220 * 1.40625 * 1.30 = 402 px tall,
+                      anchored top-right at x 1224, y 16  -> x 862..1224, y 16..418
+        bottomBarTop = 1080 - 16 - 40 * 1.40625 = 1007.75
+        bag column  = from minimapBottom + 12 = 430 down to bottomBarTop - 8 = 1000
+                      width: max(minimap width, min(what the bags need, 0.70 * 1240 = 868))
+                      drawn at the 362 px floor, dashed line = the 868 px cap (x 356)
+        left column = 1240 - 16 - 362 - 12 - 16 = 834 px (x 16..850)
+        chat        = 834 x 300 px, bottom-left at 16 px from the edges -> y 764..1064
+                      (with the Glassy chat skin the height is Glassy's measured frame instead,
+                      and it sits flush on the bottom edge)
+        tracker     = (1080 - 16 - 300) - 12 - 16 = 736 px -> Edit Mode Height 520 units
+                      (floored to 10s, minimum 400) = 731 px -> y 16..747
+      FFSpan 2.5.3, FFSpan_Home.lua:
+        lines 28-32     MARGIN 16, BAG_GAP_TOP 12
+        lines 565-587   bag column, right-hand side of the home region under the minimap
+        lines 589-603   companion lane: x 16 .. 1240 - 16 - bags - 16, y 16..1064
+        lines 605-609   page area: the whole home region minus 16 px
+        lines 626-630   size classes: TOP cap 1.25, PAGE cap 1.50, COMPANION cap 1.25
+        lines 632-669   which window is which class
+  -->
+  <rect x="0" y="0" width="1360" height="560" fill="#ffffff"/>
+
+  <text x="30" y="32" font-size="18" font-weight="600" fill="#111827">The bottom screen (1240 x 1080), drawn to scale</text>
+
+  <g font-size="15" font-weight="600" fill="#111827">
+    <text x="30" y="68">1. Nothing open</text>
+    <text x="473" y="68">2. A COMPANION window open</text>
+    <text x="916" y="68">3. A PAGE window open</text>
+  </g>
+
+  <!-- ===== panel 1: home layout ===== -->
+  <g transform="translate(30,80) scale(0.3333)">
+    <rect x="0" y="0" width="1240" height="1080" fill="#f9fafb" stroke="#1f2937" stroke-width="6"/>
+    <rect x="16" y="16" width="834" height="731" fill="#fef3c7" stroke="#92400e" stroke-width="3"/>
+    <text x="433" y="330" font-size="48" font-weight="600" fill="#111827" text-anchor="middle">Quest tracker</text>
+    <text x="433" y="390" font-size="38" fill="#111827" text-anchor="middle">top-left</text>
+    <rect x="16" y="764" width="834" height="300" fill="#e0e7ff" stroke="#3730a3" stroke-width="3"/>
+    <text x="433" y="905" font-size="48" font-weight="600" fill="#111827" text-anchor="middle">Chat</text>
+    <text x="433" y="960" font-size="38" fill="#111827" text-anchor="middle">bottom-left</text>
+    <rect x="862" y="16" width="362" height="402" fill="#dcfce7" stroke="#166534" stroke-width="3"/>
+    <text x="1043" y="200" font-size="44" font-weight="600" fill="#111827" text-anchor="middle">Minimap</text>
+    <text x="1043" y="250" font-size="36" fill="#111827" text-anchor="middle">top-right</text>
+    <rect x="862" y="430" width="362" height="570" fill="#fde2e4" stroke="#9f1239" stroke-width="3"/>
+    <text x="1043" y="690" font-size="44" font-weight="600" fill="#111827" text-anchor="middle">Bags</text>
+    <text x="1043" y="740" font-size="36" fill="#111827" text-anchor="middle">always open</text>
+    <line x1="356" y1="430" x2="356" y2="1000" stroke="#9f1239" stroke-width="5" stroke-dasharray="18 12"/>
+    <text x="372" y="480" font-size="32" fill="#9f1239">widest bag column</text>
+  </g>
+
+  <!-- ===== panel 2: companion window ===== -->
+  <g transform="translate(473,80) scale(0.3333)">
+    <rect x="0" y="0" width="1240" height="1080" fill="#f9fafb" stroke="#1f2937" stroke-width="6"/>
+    <rect x="16" y="16" width="830" height="1048" fill="#ede9fe" stroke="#5b21b6" stroke-width="4"/>
+    <text x="431" y="430" font-size="48" font-weight="600" fill="#111827" text-anchor="middle">COMPANION</text>
+    <text x="431" y="500" font-size="36" fill="#111827" text-anchor="middle">character, vendor, mail,</text>
+    <text x="431" y="548" font-size="36" fill="#111827" text-anchor="middle">bank, trade, auction house</text>
+    <text x="431" y="620" font-size="36" fill="#111827" text-anchor="middle">left of the bags, up to 1.25x</text>
+    <rect x="862" y="16" width="362" height="402" fill="#dcfce7" stroke="#166534" stroke-width="3"/>
+    <text x="1043" y="230" font-size="44" font-weight="600" fill="#111827" text-anchor="middle">Minimap</text>
+    <rect x="862" y="430" width="362" height="570" fill="#fde2e4" stroke="#9f1239" stroke-width="3"/>
+    <text x="1043" y="690" font-size="44" font-weight="600" fill="#111827" text-anchor="middle">Bags</text>
+    <text x="1043" y="740" font-size="36" fill="#111827" text-anchor="middle">stay open</text>
+  </g>
+
+  <!-- ===== panel 3: page window ===== -->
+  <g transform="translate(916,80) scale(0.3333)">
+    <rect x="0" y="0" width="1240" height="1080" fill="#f9fafb" stroke="#1f2937" stroke-width="6"/>
+    <rect x="16" y="16" width="1208" height="1048" fill="#cffafe" stroke="#155e75" stroke-width="4"/>
+    <text x="620" y="420" font-size="48" font-weight="600" fill="#111827" text-anchor="middle">PAGE</text>
+    <text x="620" y="490" font-size="36" fill="#111827" text-anchor="middle">map, spellbook, collections,</text>
+    <text x="620" y="538" font-size="36" fill="#111827" text-anchor="middle">achievements, calendar, friends</text>
+    <text x="620" y="610" font-size="36" fill="#111827" text-anchor="middle">whole bottom screen, one at a time,</text>
+    <text x="620" y="658" font-size="36" fill="#111827" text-anchor="middle">up to 1.5x</text>
+  </g>
+
+  <!-- captions -->
+  <g font-size="13" fill="#374151">
+    <text x="30" y="468">Bag column: as wide as the minimap (362 px)</text>
+    <text x="30" y="487">up to 868 px (70 %) when the bags need it.</text>
+    <text x="473" y="468">The bags stay open. Their column can narrow</text>
+    <text x="473" y="487">so the window gets more room.</text>
+    <text x="916" y="468">TOP windows (game menu, settings, shop,</text>
+    <text x="916" y="487">talents) open on the top screen instead.</text>
+  </g>
+  <text x="30" y="535" font-size="12" fill="#6b7280">Positions from the layout code at UI scale 1.0, for a character whose bags fit the narrowest column. Chat shown at Blizzard's 300 px height.</text>
+</svg>

@@ -1,0 +1,55 @@
+server: Treat Android shared-storage files as owned by the prefix user.
+
+Android shared storage (/storage/emulated) is a FUSE mount, sdcardfs on older Android. Every file there reports MediaProvider as its owner and apps cannot change mode bits, so wineserver maps the owner to Anonymous Logon and Windows access checks fail. The Battle.net Agent refuses to update or launch a game installed there. The fix treats such files as owned by the prefix user and does not fail a security-descriptor write just because fchmod is refused on that mount.
+
+Touches server/file.c only.
+
+diff --git a/server/file.c b/server/file.c
+index 934c394ae34..318e56d7355 100644
+--- a/server/file.c
++++ b/server/file.c
+@@ -30,6 +30,7 @@
+ #include <sys/stat.h>
+ #include <sys/time.h>
+ #include <sys/types.h>
++#include <sys/vfs.h>
+ #include <time.h>
+ #include <limits.h>
+ #include <unistd.h>
+@@ -532,6 +533,17 @@ static struct security_descriptor *get_xattr_sd( int fd )
+     return sd;
+ }
+ 
++/* Android shared storage (/storage/emulated) is a FUSE mount (sdcardfs on older
++ * Android). Every file there reports MediaProvider as its owner and apps cannot change mode bits, so
++ * Wine mapped the owner to Anonymous Logon and Windows access checks failed (Battle.net Agent refuses
++ * to update/launch a game installed there). Treat such files as owned by the prefix user, and do not
++ * fail a security-descriptor write just because fchmod is refused there. */
++static int is_android_shared_storage( int unix_fd )
++{
++    struct statfs sfs;
++    return !fstatfs( unix_fd, &sfs ) && (sfs.f_type == 0x65735546 /* FUSE */ || sfs.f_type == 0x5dca2df5 /* sdcardfs */);
++}
++
+ struct security_descriptor *get_file_sd( struct object *obj, struct fd *fd, mode_t *mode,
+                                          uid_t *uid )
+ {
+@@ -549,7 +561,7 @@ struct security_descriptor *get_file_sd( struct object *obj, struct fd *fd, mode
+ 
+     sd = get_xattr_sd( unix_fd );
+     if (!sd) sd = mode_to_sd( st.st_mode,
+-                              security_unix_uid_to_sid( st.st_uid ),
++                              security_unix_uid_to_sid( (st.st_uid != getuid() && is_android_shared_storage( unix_fd )) ? getuid() : st.st_uid ),
+                               token_get_primary_group( current->process->token ));
+     if (!sd) return obj->sd;
+ 
+@@ -703,7 +715,8 @@ int set_file_sd( struct object *obj, struct fd *fd, mode_t *mode, uid_t *uid,
+             new_mode = st.st_mode & (S_ISUID|S_ISGID|S_ISVTX);
+             new_mode |= sd_to_mode( new_sd, owner );
+ 
+-            if (((st.st_mode ^ new_mode) & (S_IRWXU|S_IRWXG|S_IRWXO)) && fchmod( unix_fd, new_mode ) == -1)
++            if (((st.st_mode ^ new_mode) & (S_IRWXU|S_IRWXG|S_IRWXO)) && fchmod( unix_fd, new_mode ) == -1 &&
++                !is_android_shared_storage( unix_fd ))
+             {
+                 free( new_sd );
+                 file_set_error();

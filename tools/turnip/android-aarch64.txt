@@ -1,0 +1,40 @@
+# Meson cross file: Turnip (Mesa freedreno Vulkan) for Android arm64.
+#
+# API 33 IS DELIBERATE AND LOAD-BEARING.  The Thor runs Android 13 (API 33).
+# Building against a newer platform lets Mesa pick up bionic symbols that do
+# not exist on A13.  That is how an earlier self-build broke: dlopen failed
+# on `pthread_getaffinity_np` and adrenotools SILENTLY fell back to the stock
+# Adreno blob.
+# A silent fallback looks like "the driver works but the bug is unchanged",
+# so keep this pinned and verify the loaded driver version after every deploy.
+#
+# NDK bin dir must be on PATH (build.sh does this).  build.sh reads this file from
+# ~/wow-turnip/android-aarch64.txt, so copy it there.
+
+[binaries]
+c = 'aarch64-linux-android33-clang'
+cpp = 'aarch64-linux-android33-clang++'
+ar = 'llvm-ar'
+strip = 'llvm-strip'
+pkg-config = '/usr/bin/pkg-config'
+
+[properties]
+# Point pkg-config at an EMPTY directory.  Without this it searches the build
+# host's /usr/lib/pkgconfig and "finds" x86-64 Linux libraries for an
+# Android arm64 build.  That is how spirv-tools got enabled and then failed
+# with "spirv-tools/libspirv.h: file not found", and would also have pulled in
+# libudev/zlib that do not belong in this image.  Mesa falls back to its own
+# subprojects for anything it genuinely needs.
+# Point this at an EMPTY directory on the build machine.
+pkg_config_libdir = ['/path/to/empty-pkgconfig']
+
+[built-in options]
+c_args = ['-O2']
+cpp_args = ['-O2', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables']
+cpp_link_args = ['-static-libstdc++']
+
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'

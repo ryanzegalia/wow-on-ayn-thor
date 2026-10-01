@@ -1,0 +1,9 @@
+.claude/
+*.apk
+*.idsig
+*.dex
+__pycache__/
+*.pyc
+
+# Built download files (published as release assets, never committed)
+dist/

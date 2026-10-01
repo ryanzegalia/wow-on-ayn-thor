@@ -1,0 +1,766 @@
+diff --git a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+new file mode 100644
+index 00000000..db2a3737
+--- /dev/null
++++ b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+@@ -0,0 +1,206 @@
++package app.gamenative.externaldisplay
++
++import android.app.Presentation
++import android.content.Context
++import android.hardware.display.DisplayManager
++import android.os.Handler
++import android.os.Looper
++import android.view.Display
++import android.view.ViewGroup
++import android.view.WindowManager
++import android.widget.FrameLayout
++import app.gamenative.PluviaApp
++import com.winlator.renderer.VulkanRenderer
++import com.winlator.widget.TouchpadView
++import com.winlator.widget.XServerView
++import com.winlator.xserver.XServer
++import timber.log.Timber
++
++/**
++ * Span mode (AYN Thor dual screen): the Wine X screen is wider than the top panel.
++ * The primary renderer shows X x in [0, splitX) at 1:1 on display 0; this controller puts a
++ * second XServerView (a "mirror" VulkanRenderer fed by the primary) on the presentation display
++ * showing x in [splitX, W) at 1:1, with a touchscreen-mode TouchpadView on top mapped to that region.
++ *
++ * The secondary view is never registered as xServer's renderer and never becomes
++ * PluviaApp.xServerView / PluviaApp.touchpadView.
++ */
++class SpanDisplayController(
++    private val context: Context,
++    private val xServer: XServer,
++    private val primary: VulkanRenderer,
++    private val splitX: Int,
++) {
++    private val displayManager = context.getSystemService(DisplayManager::class.java)
++    private var presentation: SpanPresentation? = null
++    private var secondaryView: XServerView? = null
++    private var secondaryRenderer: VulkanRenderer? = null
++    private var started = false
++
++    private val screenW: Int get() = xServer.screenInfo.width.toInt()
++    private val screenH: Int get() = xServer.screenInfo.height.toInt()
++
++    private val displayListener = object : DisplayManager.DisplayListener {
++        override fun onDisplayAdded(displayId: Int) = update()
++
++        override fun onDisplayRemoved(displayId: Int) {
++            if (presentation?.display?.displayId == displayId) {
++                Timber.tag(TAG).i("display %d removed", displayId)
++                teardown()
++            }
++            update()
++        }
++
++        override fun onDisplayChanged(displayId: Int) {
++            if (presentation?.display?.displayId == displayId) update()
++        }
++    }
++
++    fun start() {
++        if (started) return
++        started = true
++        Timber.tag(TAG).i("start: X screen %dx%d, splitX=%d, top src=(0,0,%d,%d)", screenW, screenH, splitX, splitX, screenH)
++        primary.setSpanViewport(0, 0, splitX, screenH)
++        displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
++        update()
++    }
++
++    fun stop() {
++        if (!started) return
++        started = false
++        Timber.tag(TAG).i("stop")
++        teardown()
++        try {
++            displayManager?.unregisterDisplayListener(displayListener)
++        } catch (_: Exception) {
++        }
++        primary.setSpanViewport(0, 0, 0, 0)
++    }
++
++    private fun update() {
++        if (!started) return
++        val target = findPresentationDisplay()
++        if (target == null) {
++            Timber.tag(TAG).w("no presentation display found; only x < %d is visible", splitX)
++            teardown()
++            return
++        }
++        if (presentation != null && presentation?.display?.displayId == target.displayId) return
++        teardown()
++
++        val w = screenW
++        val h = screenH
++        val srcW = w - splitX
++        Timber.tag(TAG).i(
++            "display id=%d name=%s mode=%dx%d; bottom src=(%d,0,%d,%d)",
++            target.displayId, target.name, target.mode.physicalWidth, target.mode.physicalHeight, splitX, srcW, h,
++        )
++
++        val p = SpanPresentation(context, target)
++        try {
++            p.show()
++        } catch (e: Exception) {
++            Timber.tag(TAG).e(e, "presentation show failed on display %d", target.displayId)
++            return
++        }
++        presentation = p
++        Timber.tag(TAG).i("presentation shown on display %d", target.displayId)
++
++        val view = XServerView(p.context, xServer, "vulkan")
++        val r = view.renderer as? VulkanRenderer
++        if (r == null) {
++            Timber.tag(TAG).w("secondary XServerView has no VulkanRenderer; dismissing")
++            view.release()
++            p.dismiss()
++            presentation = null
++            return
++        }
++        r.setMirror(true)
++        r.setVkPresentMode(primary.getVkPresentMode())
++        primary.getUnviewableWMClasses()?.let { r.setUnviewableWMClasses(*it) }
++        r.setSpanViewport(splitX, 0, srcW, h)
++        r.setCursorVisible(primary.isCursorVisible())
++        p.root.addView(
++            view,
++            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
++        )
++
++        val touch = TouchpadView(p.context, xServer, false)
++        touch.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
++        // Same gestures as the top screen (TouchGestureConfig has no scroll-wheel two-finger-drag action; pinch = wheel).
++        PluviaApp.touchpadView?.getGestureConfig()?.let { touch.setGestureConfig(it) }
++        touch.setTouchscreenMode(true)
++        touch.setAbsoluteRegion(splitX, 0, srcW, h)
++        p.root.addView(touch)
++
++        secondaryView = view
++        secondaryRenderer = r
++        primary.addMirror(r)
++        Timber.tag(TAG).i("mirror renderer attached (touch region x=%d..%d)", splitX, w)
++    }
++
++    private fun teardown() {
++        val r = secondaryRenderer
++        val v = secondaryView
++        val p = presentation
++        if (r == null && v == null && p == null) return
++        Timber.tag(TAG).i("teardown: display=%s", p?.display?.displayId)
++        if (r != null) primary.removeMirror(r)
++        try {
++            p?.root?.removeAllViews()
++        } catch (e: Exception) {
++            Timber.tag(TAG).w(e, "removeAllViews failed")
++        }
++        try {
++            v?.release()
++        } catch (e: Exception) {
++            Timber.tag(TAG).w(e, "secondary view release failed")
++        }
++        try {
++            p?.dismiss()
++        } catch (e: Exception) {
++            Timber.tag(TAG).w(e, "presentation dismiss failed")
++        }
++        secondaryRenderer = null
++        secondaryView = null
++        presentation = null
++        Timber.tag(TAG).i("teardown done")
++    }
++
++    private fun findPresentationDisplay(): Display? {
++        val currentDisplay = context.display ?: return null
++        return displayManager
++            ?.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
++            ?.firstOrNull { display ->
++                display.displayId != currentDisplay.displayId && display.name != "HiddenDisplay"
++            }
++    }
++
++    private companion object {
++        const val TAG = "SpanDisplay"
++    }
++}
++
++private class SpanPresentation(
++    outerContext: Context,
++    display: Display,
++) : Presentation(outerContext, display) {
++    val root: FrameLayout by lazy {
++        FrameLayout(context).apply {
++            layoutParams = FrameLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.MATCH_PARENT,
++            )
++        }
++    }
++
++    override fun onCreate(savedInstanceState: android.os.Bundle?) {
++        super.onCreate(savedInstanceState)
++        // Keep focus / controller input on the main activity.
++        window?.setFlags(
++            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
++            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
++        )
++        setContentView(root)
++    }
++}
+diff --git a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+index da27863c..9d23e87c 100644
+--- a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
++++ b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+@@ -106,6 +106,7 @@ import app.gamenative.ui.enums.Orientation
+ import java.util.EnumSet
+ import app.gamenative.externaldisplay.ExternalDisplayInputController
+ import app.gamenative.externaldisplay.ExternalDisplaySwapController
++import app.gamenative.externaldisplay.SpanDisplayController
+ import app.gamenative.externaldisplay.SwapInputOverlayView
+ import app.gamenative.powercontrol.PowerManager
+ import app.gamenative.service.AchievementWatcher
+@@ -1985,6 +1986,9 @@ fun XServerScreen(
+             // other containers as well. Uncheck the per-container useLegacyRenderer
+             // setting to switch to the Vulkan renderer.
+             val useGLRenderer = container.graphicsDriver == "virgl" || container.displayRenderer.equals("gl", true)
++            // Span mode (AYN Thor): the X screen spans display 0 (x < splitX) and the presentation display (x >= splitX).
++            val spanEnabled = container.getExtra("spanDisplay", "false").equals("true", true) && !useGLRenderer
++            val spanSplitXPref = container.getExtra("spanSplitX", "1920").trim().toIntOrNull() ?: 1920
+             val xServerViewInstance: XServerRendererView = if (useGLRenderer) {
+                 XServerViewGL(context, xServerToUse)
+             } else {
+@@ -2587,7 +2591,7 @@ fun XServerScreen(
+             swapInputOverlay = overlay
+ 
+             val externalDisplayController =
+-                if (!swapEnabled && configuredExternalMode != ExternalDisplayInputController.Mode.OFF) {
++                if (!swapEnabled && configuredExternalMode != ExternalDisplayInputController.Mode.OFF && !spanEnabled) {
+                     ExternalDisplayInputController(
+                         context = context,
+                         xServer = xServerView.getxServer(),
+@@ -2601,7 +2605,7 @@ fun XServerScreen(
+                 }
+ 
+             val swapController =
+-                if (swapEnabled) {
++                if (swapEnabled && !spanEnabled) {
+                     val surfaceBg = ContextCompat.getColor(context, R.color.external_display_surface_background)
+                     ExternalDisplaySwapController(
+                         context = context,
+@@ -2635,12 +2639,36 @@ fun XServerScreen(
+                 } else {
+                     null
+                 }
++            val spanController: SpanDisplayController? =
++                if (spanEnabled) {
++                    val spanXServer = xServerView.getxServer()
++                    val primaryVk = spanXServer.renderer as? VulkanRenderer
++                    if (primaryVk == null) {
++                        Timber.tag("SpanDisplay").w("spanDisplay=true but the renderer is not VulkanRenderer; span mode skipped")
++                        null
++                    } else {
++                        val spanW = spanXServer.screenInfo.width.toInt()
++                        val spanH = spanXServer.screenInfo.height.toInt()
++                        val splitX = spanSplitXPref.coerceIn(1, maxOf(1, spanW - 1))
++                        // Top-screen touches land in [0, splitX) at 1:1.
++                        PluviaApp.touchpadView?.setAbsoluteRegion(0, 0, splitX, spanH)
++                        SpanDisplayController(
++                            context = context,
++                            xServer = spanXServer,
++                            primary = primaryVk,
++                            splitX = splitX,
++                        ).apply { start() }
++                    }
++                } else {
++                    null
++                }
+             mainRoot.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                 override fun onViewAttachedToWindow(v: View) {}
+ 
+                 override fun onViewDetachedFromWindow(v: View) {
+                     externalDisplayController?.stop()
+                     swapController?.stop()
++                    spanController?.stop()
+                 }
+             })
+             // Don't call hideInputControls() here - let the auto-show logic below handle visibility
+diff --git a/app/src/main/java/app/gamenative/utils/PerfSampler.kt b/app/src/main/java/app/gamenative/utils/PerfSampler.kt
+index fb0e4f04..79968e32 100644
+--- a/app/src/main/java/app/gamenative/utils/PerfSampler.kt
++++ b/app/src/main/java/app/gamenative/utils/PerfSampler.kt
+@@ -817,7 +817,7 @@ object PerfSampler {
+             return (
+                 entries.firstOrNull { it.first == "A" }
+                     ?: entries.firstOrNull { (_, path) ->
+-                        !path.endsWith("/Download") && !path.endsWith("app.gamenative/storage")
++                        !path.endsWith("/Download") && !path.endsWith("${app.gamenative.BuildConfig.APPLICATION_ID}/storage")
+                     }
+                 )?.second
+         }
+diff --git a/app/src/main/java/com/winlator/container/Container.java b/app/src/main/java/com/winlator/container/Container.java
+index e98f5bc6..44dabad1 100644
+--- a/app/src/main/java/com/winlator/container/Container.java
++++ b/app/src/main/java/com/winlator/container/Container.java
+@@ -50,14 +50,14 @@ public class Container {
+     public static final String DEFAULT_WINCOMPONENTS = "direct3d=1,directsound=1,directinput8=0,directinput=0,directmusic=0,directshow=0,directplay=0,vcrun2010=1,wmdecoder=1,opengl=0";
+     public static final String FALLBACK_WINCOMPONENTS = "direct3d=1,directsound=1,directinput8=0,directinput=0,directmusic=1,directshow=1,directplay=1,vcrun2010=1,wmdecoder=1,opengl=0";
+     public static final String[] MEDIACONV_ENV_VARS = {
+-            "MEDIACONV_AUDIO_DUMP_FILE=/data/data/app.gamenative/files/imagefs/home/xuser/audio.dmp",
+-            "MEDIACONV_VIDEO_DUMP_FILE=/data/data/app.gamenative/files/imagefs/home/xuser/video.dmp",
+-            "MEDIACONV_VIDEO_TRANSCODED_FILE=/data/data/app.gamenative/files/imagefs/home/xuser/transcoded.mkv",
+-            "MEDIACONV_AUDIO_TRANSCODED_FILE=/data/data/app.gamenative/files/imagefs/home/xuser/transcoded.wav",
+-            "MEDIACONV_BLANK_AUDIO_FILE=/data/data/app.gamenative/files/imagefs/home/xuser/blank.wav",
+-            "MEDIACONV_BLANK_VIDEO_FILE=/data/data/app.gamenative/files/imagefs/home/xuser/blank.mkv",
++            "MEDIACONV_AUDIO_DUMP_FILE=/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/home/xuser/audio.dmp",
++            "MEDIACONV_VIDEO_DUMP_FILE=/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/home/xuser/video.dmp",
++            "MEDIACONV_VIDEO_TRANSCODED_FILE=/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/home/xuser/transcoded.mkv",
++            "MEDIACONV_AUDIO_TRANSCODED_FILE=/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/home/xuser/transcoded.wav",
++            "MEDIACONV_BLANK_AUDIO_FILE=/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/home/xuser/blank.wav",
++            "MEDIACONV_BLANK_VIDEO_FILE=/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/home/xuser/blank.mkv",
+     };
+-    public static final String DEFAULT_DRIVES = "D:"+Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)+"E:/data/data/app.gamenative/storage";
++    public static final String DEFAULT_DRIVES = "D:"+Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)+"E:/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/storage";
+     public static final String DEFAULT_VARIANT = DefaultVersion.VARIANT;
+     public static final String DEFAULT_WINE_VERSION = DefaultVersion.WINE_VERSION;
+     public static final byte STARTUP_SELECTION_NORMAL = 0;
+diff --git a/app/src/main/java/com/winlator/core/DXVKHelper.java b/app/src/main/java/com/winlator/core/DXVKHelper.java
+index 2672fc8f..fb745a6f 100644
+--- a/app/src/main/java/com/winlator/core/DXVKHelper.java
++++ b/app/src/main/java/com/winlator/core/DXVKHelper.java
+@@ -17,7 +17,7 @@ public class DXVKHelper {
+ 
+     public static void setEnvVars(Context context, KeyValueSet config, EnvVars envVars) {
+         ImageFs imageFs = ImageFs.find(context);
+-        envVars.put("DXVK_STATE_CACHE_PATH", "/data/data/app.gamenative/files/imagefs"+ImageFs.CACHE_PATH);
++        envVars.put("DXVK_STATE_CACHE_PATH", "/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs"+ImageFs.CACHE_PATH);
+         envVars.put("DXVK_LOG_LEVEL", "none");
+ 
+         File rootDir = ImageFs.find(context).getRootDir();
+diff --git a/app/src/main/java/com/winlator/core/WineUtils.java b/app/src/main/java/com/winlator/core/WineUtils.java
+index 1955f965..74482476 100644
+--- a/app/src/main/java/com/winlator/core/WineUtils.java
++++ b/app/src/main/java/com/winlator/core/WineUtils.java
+@@ -45,7 +45,7 @@ public abstract class WineUtils {
+                 missingDrives += "D:" + android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+             }
+             if (!currentDrives.contains("E:")) {
+-                missingDrives += "E:/data/data/app.gamenative/storage";
++                missingDrives += "E:/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/storage";
+             }
+             String updatedDrives = missingDrives + currentDrives;
+             container.setDrives(updatedDrives);
+@@ -57,7 +57,7 @@ public abstract class WineUtils {
+         for (String[] drive : container.drivesIterator()) {
+             File linkTarget = new File(drive[1]);
+             String path = linkTarget.getAbsolutePath();
+-            if (!linkTarget.isDirectory() && path.endsWith("/app.gamenative/storage")) {
++            if (!linkTarget.isDirectory() && path.endsWith("/" + app.gamenative.BuildConfig.APPLICATION_ID + "/storage")) {
+                 linkTarget.mkdirs();
+                 FileUtils.chmod(linkTarget, 0771);
+             }
+diff --git a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+index a7b7e0c8..5a319194 100644
+--- a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
++++ b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+@@ -21,6 +21,7 @@ import com.winlator.xserver.XLock;
+ import com.winlator.xserver.XServer;
+ 
+ import java.util.ArrayList;
++import java.util.concurrent.CopyOnWriteArrayList;
+ 
+ public class VulkanRenderer implements WindowManager.OnWindowModificationListener,
+                                        Pointer.OnPointerMotionListener,
+@@ -47,6 +48,14 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+     private long nativeHandle = 0;
+     private final Object lock = new Object();
+ 
++    // Span mode (dual-screen): the X-screen source rect this renderer shows at 1:1. spanSrcW == 0 = off.
++    private volatile int spanSrcX = 0, spanSrcY = 0, spanSrcW = 0, spanSrcH = 0;
++    // Secondary renderers that must also receive Present-path frames (PresentExtension only talks to xServer.getRenderer()).
++    private final CopyOnWriteArrayList<VulkanRenderer> mirrors = new CopyOnWriteArrayList<>();
++    private volatile boolean released = false;
++    private volatile boolean isMirror = false;
++    private final java.util.concurrent.atomic.AtomicInteger mirrorCallsInFlight = new java.util.concurrent.atomic.AtomicInteger();
++
+     public final ViewTransformation viewTransformation = new ViewTransformation();
+     private boolean fullscreen = false;
+     private float magnifierZoom = 1.0f;
+@@ -197,6 +206,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+     }
+ 
+     public void onSurfaceCreated(Surface surface) {
++        if (released) return;
+         if (!gpuImageChecked) { GPUImage.checkIsSupported(); gpuImageChecked = true; }
+         if (initExecutor != null) {
+             initExecutor.shutdownNow();
+@@ -347,6 +357,12 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+ 
+     private void updateTransform() {
+         if (nativeHandle == 0) return;
++        if (spanSrcW > 0 && spanSrcH > 0) {
++            float sx = (float) xServer.screenInfo.width / spanSrcW;
++            float sy = (float) xServer.screenInfo.height / spanSrcH;
++            nativeSetTransform(nativeHandle, -spanSrcX * sx, -spanSrcY * sy, sx, sy);
++            return;
++        }
+         if (fullscreen || outputScalingMode == SCALE_STRETCH) {
+             nativeSetTransform(nativeHandle, 0, 0, 1.0f, 1.0f);
+             nativeScanoutSetDst(nativeHandle,
+@@ -493,6 +509,22 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+     }
+ 
+     public void onUpdateWindowContentDirect(Window window, Drawable pixmap, short xOff, short yOff) {
++        onUpdateWindowContentDirectImpl(window, pixmap, xOff, yOff);
++        // Mirrors must finish before we return: Wine reuses the pixmap once the Present path idles it.
++        if (mirrors.isEmpty()) return;
++        for (VulkanRenderer m : mirrors) m.mirrorUpdateWindowContentDirect(window, pixmap, xOff, yOff);
++    }
++
++    private void mirrorUpdateWindowContentDirect(Window window, Drawable pixmap, short xOff, short yOff) {
++        mirrorCallsInFlight.incrementAndGet();
++        try {
++            if (!released) onUpdateWindowContentDirectImpl(window, pixmap, xOff, yOff);
++        } finally {
++            mirrorCallsInFlight.decrementAndGet();
++        }
++    }
++
++    private void onUpdateWindowContentDirectImpl(Window window, Drawable pixmap, short xOff, short yOff) {
+         if (!flatPresentationEnabled) return;
+         if (hudRef != null && !nativeMode) hudRef.update();
+         if (nativeHandle == 0 || pixmap == null) return;
+@@ -506,7 +538,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+                 GPUImage g = (GPUImage) texture;
+                 long ahbPtr = g.getHardwareBufferPtr();
+                 if (ahbPtr != 0) {
+-                    if (nativeMode && pixmap.isDirectScanout() && nativeIsScanoutActive(nativeHandle)) {
++                    if (!isMirror && nativeMode && pixmap.isDirectScanout() && nativeIsScanoutActive(nativeHandle)) {
+                         int fenceFd = g.unlock();
+                         nativeScanoutSetBuffer(nativeHandle, ahbPtr,
+                             rx, ry, pixmap.width, pixmap.height, fenceFd);
+@@ -543,6 +575,16 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+ 
+     @Override
+     public void onUpdateWindowContent(Window window) {
++        if (!isMirror) { onUpdateWindowContentImpl(window); return; }
++        mirrorCallsInFlight.incrementAndGet();
++        try {
++            if (!released) onUpdateWindowContentImpl(window);
++        } finally {
++            mirrorCallsInFlight.decrementAndGet();
++        }
++    }
++
++    private void onUpdateWindowContentImpl(Window window) {
+         if (!flatPresentationEnabled) return;
+         if (hudRef != null) hudRef.update();
+         final long handle;
+@@ -564,7 +606,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+                 GPUImage g = (GPUImage) drawable.getTexture();
+                 long ahbPtr = g.getHardwareBufferPtr();
+                 if (ahbPtr != 0) {
+-                    boolean scanoutNow = nativeMode && nativeIsScanoutActive(handle);
++                    boolean scanoutNow = !isMirror && nativeMode && nativeIsScanoutActive(handle);
+                     if (nativeMode && drawable.isDirectScanout() && scanoutNow) {
+                         boolean wasDelivered = nativeIsGameFrameDelivered(handle);
+                         int fenceFd = g.unlock();
+@@ -663,6 +705,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+         synchronized (lock) {
+             if (nativeHandle != 0) { nativeSetCursorVisible(nativeHandle, visible); if (visible) sendCursorToNative(lastCursor); }
+         }
++        for (VulkanRenderer m : mirrors) m.setCursorVisible(visible);
+     }
+ 
+     public boolean isCursorVisible() { return cursorVisible; }
+@@ -674,12 +717,16 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+      */
+     public void updateVisualCursorPosition(int x, int y) {
+         synchronized (lock) {
+-            if (nativeHandle == 0) return;
+-            nativeSetPointerPos(nativeHandle, (short) x, (short) y);
++            if (nativeHandle != 0) nativeSetPointerPos(nativeHandle, (short) x, (short) y);
+         }
++        for (VulkanRenderer m : mirrors) m.updateVisualCursorPosition(x, y);
+     }
+ 
+     public void setNativeMode(boolean mode) {
++        if (mode && (isSpanMode() || isMirror)) {
++            android.util.Log.w("VulkanRenderer", "setNativeMode(true) refused: span mode / mirror renderer");
++            return;
++        }
+         if (this.nativeMode == mode) return;
+         this.nativeMode = mode;
+         xRenderingPausedForScanout = false;
+@@ -754,6 +801,57 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+ 
+     public boolean isNativeMode() { return nativeMode; }
+ 
++    // ---- Span mode (dual-screen) ----
++
++    /** Show only X-screen rect (x, y, w, h) stretched over this surface; w == 0 turns span off. */
++    public void setSpanViewport(int x, int y, int w, int h) {
++        synchronized (lock) {
++            spanSrcX = x; spanSrcY = y; spanSrcW = w; spanSrcH = h;
++            updateTransform();
++        }
++    }
++
++    public boolean isSpanMode() { return spanSrcW > 0 && spanSrcH > 0; }
++    public int getSpanSrcX() { return spanSrcX; }
++    public int getSpanSrcY() { return spanSrcY; }
++    public int getSpanSrcW() { return spanSrcW; }
++    public int getSpanSrcH() { return spanSrcH; }
++
++    public void addMirror(VulkanRenderer r) { if (r != null && r != this) mirrors.addIfAbsent(r); }
++    public void removeMirror(VulkanRenderer r) { mirrors.remove(r); }
++    public void setMirror(boolean mirror) { this.isMirror = mirror; }
++    public boolean isMirror() { return isMirror; }
++    public String[] getUnviewableWMClasses() { return unviewableWMClasses; }
++    public int getVkPresentMode() { return pendingPresentMode; }
++
++    /** Permanently tear down this renderer (listeners, init thread, native context). Used for span mirrors. */
++    public void release() {
++        if (released) return;
++        released = true;
++        xServer.windowManager.removeOnWindowModificationListener(this);
++        xServer.pointer.removeOnPointerMotionListener(this);
++        // Bounded wait for frame uploads already running on the X / Present threads.
++        long deadline = System.nanoTime() + 1_000_000_000L;
++        while (mirrorCallsInFlight.get() > 0 && System.nanoTime() < deadline) {
++            try { Thread.sleep(1); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
++        }
++        mirrors.clear();
++        initComplete = false;
++        if (initExecutor != null) {
++            initExecutor.shutdownNow();
++            try { initExecutor.awaitTermination(3, java.util.concurrent.TimeUnit.SECONDS); }
++            catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
++            initExecutor = null;
++        }
++        synchronized (lock) {
++            if (nativeHandle != 0) {
++                if (nativeMode) nativeDestroyScanout(nativeHandle);
++                nativeDestroy(nativeHandle);
++                nativeHandle = 0;
++            }
++        }
++    }
++
+     public void setDriverInfo(String driverPath, String libraryName, String nativeLibDir) {
+         this.driverPath = driverPath;
+         this.driverLibraryName = libraryName;
+diff --git a/app/src/main/java/com/winlator/widget/TouchpadView.java b/app/src/main/java/com/winlator/widget/TouchpadView.java
+index 3456791a..21b6fc2f 100644
+--- a/app/src/main/java/com/winlator/widget/TouchpadView.java
++++ b/app/src/main/java/com/winlator/widget/TouchpadView.java
+@@ -293,7 +293,34 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
+         updateXform(w, h, screenInfo.width, screenInfo.height);
+     }
+ 
++    // Span mode: map this view onto an absolute X-screen region instead of letterboxing the whole screen.
++    private boolean useCustomRegion = false;
++    private int regionOffsetX, regionOffsetY, regionWidth, regionHeight;
++
++    public void setAbsoluteRegion(int offsetX, int offsetY, int width, int height) {
++        useCustomRegion = true;
++        regionOffsetX = offsetX;
++        regionOffsetY = offsetY;
++        regionWidth = width;
++        regionHeight = height;
++        updateXform(getWidth(), getHeight(), width, height);
++    }
++
++    public void clearAbsoluteRegion() {
++        useCustomRegion = false;
++        if (getWidth() > 0 && getHeight() > 0) {
++            updateXform(getWidth(), getHeight(), xServer.screenInfo.width, xServer.screenInfo.height);
++        }
++    }
++
+     private void updateXform(int outerWidth, int outerHeight, int innerWidth, int innerHeight) {
++        if (useCustomRegion) {
++            if (outerWidth <= 0 || outerHeight <= 0) return;
++            // x' = x * sx + ox (XForm.translate post-multiplies)
++            XForm.makeScale(this.xform, (float) regionWidth / outerWidth, (float) regionHeight / outerHeight);
++            XForm.translate(this.xform, regionOffsetX, regionOffsetY);
++            return;
++        }
+         ViewTransformation viewTransformation = new ViewTransformation();
+         viewTransformation.update(outerWidth, outerHeight, innerWidth, innerHeight);
+         float invAspect = 1.0f / viewTransformation.aspect;
+diff --git a/app/src/main/java/com/winlator/widget/XServerView.java b/app/src/main/java/com/winlator/widget/XServerView.java
+index d005cea1..0161c8e0 100644
+--- a/app/src/main/java/com/winlator/widget/XServerView.java
++++ b/app/src/main/java/com/winlator/widget/XServerView.java
+@@ -77,7 +77,19 @@ public class XServerView extends SurfaceView implements SurfaceHolder.Callback,
+     }
+ 
+     public void queueEvent(Runnable r) {
+-        eventExecutor.execute(r);
++        try {
++            eventExecutor.execute(r);
++        } catch (java.util.concurrent.RejectedExecutionException ignored) {
++            // released (span mirror view): drop late scene updates
++        }
++    }
++
++    /** Permanently release this view's renderer and event thread (span-mode secondary view). */
++    public void release() {
++        if (renderer instanceof VulkanRenderer vkRenderer) {
++            vkRenderer.release();
++        }
++        eventExecutor.shutdown();
+     }
+ 
+     public void onPause() {}
+diff --git a/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java b/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java
+index ab053271..cc261f3b 100644
+--- a/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java
++++ b/app/src/main/java/com/winlator/xenvironment/components/BionicProgramLauncherComponent.java
+@@ -207,10 +207,10 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
+             String memPath;
+             if (i == 0) {
+                 // Player 1 uses the original, non-numbered path that is known to work.
+-                memPath = "/data/data/app.gamenative/files/imagefs/tmp/gamepad.mem";
++                memPath = "/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/tmp/gamepad.mem";
+             } else {
+                 // Players 2, 3, 4 use a 1-based index.
+-                memPath = "/data/data/app.gamenative/files/imagefs/tmp/gamepad" + i + ".mem";
++                memPath = "/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files/imagefs/tmp/gamepad" + i + ".mem";
+             }
+ 
+             File memFile = new File(memPath);
+@@ -243,6 +243,8 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
+         }
+ 
+         EnvVars envVars = new EnvVars();
++        // evshim.c falls back to /data/data/app.gamenative/files; give it this package's dir.
++        envVars.put("EVSHIM_BASE_PATH", "/data/data/" + app.gamenative.BuildConfig.APPLICATION_ID + "/files");
+ 
+         // Use the ControllerManager's dynamic count for the environment variable
+         envVars.put("EVSHIM_MAX_PLAYERS", String.valueOf(MAX_PLAYERS));
+diff --git a/app/src/main/java/com/winlator/xserver/Pointer.java b/app/src/main/java/com/winlator/xserver/Pointer.java
+index e717b323..cc915dd4 100644
+--- a/app/src/main/java/com/winlator/xserver/Pointer.java
++++ b/app/src/main/java/com/winlator/xserver/Pointer.java
+@@ -17,7 +17,7 @@ public class Pointer {
+         }
+     }
+     public static final byte MAX_BUTTONS = 7;
+-    private final ArrayList<OnPointerMotionListener> onPointerMotionListeners = new ArrayList<>();
++    private final java.util.concurrent.CopyOnWriteArrayList<OnPointerMotionListener> onPointerMotionListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+     private final Bitmask buttonMask = new Bitmask();
+     private final XServer xServer;
+     private short x;
+@@ -91,20 +91,23 @@ public class Pointer {
+     }
+ 
+     private void triggerOnPointerButtonPress(Button button) {
+-        for (int i = onPointerMotionListeners.size()-1; i >= 0; i--) {
+-            onPointerMotionListeners.get(i).onPointerButtonPress(button);
++        Object[] snapshot = onPointerMotionListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnPointerMotionListener) snapshot[i]).onPointerButtonPress(button);
+         }
+     }
+ 
+     private void triggerOnPointerButtonRelease(Button button) {
+-        for (int i = onPointerMotionListeners.size()-1; i >= 0; i--) {
+-            onPointerMotionListeners.get(i).onPointerButtonRelease(button);
++        Object[] snapshot = onPointerMotionListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnPointerMotionListener) snapshot[i]).onPointerButtonRelease(button);
+         }
+     }
+ 
+     private void triggerOnPointerMove(short x, short y) {
+-        for (int i = onPointerMotionListeners.size()-1; i >= 0; i--) {
+-            onPointerMotionListeners.get(i).onPointerMove(x, y);
++        Object[] snapshot = onPointerMotionListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnPointerMotionListener) snapshot[i]).onPointerMove(x, y);
+         }
+     }
+ }
+diff --git a/app/src/main/java/com/winlator/xserver/WindowManager.java b/app/src/main/java/com/winlator/xserver/WindowManager.java
+index 7d93b9c9..59cd86c5 100644
+--- a/app/src/main/java/com/winlator/xserver/WindowManager.java
++++ b/app/src/main/java/com/winlator/xserver/WindowManager.java
+@@ -27,7 +27,7 @@ public class WindowManager extends XResourceManager {
+     public final DrawableManager drawableManager;
+     private Window focusedWindow;
+     private FocusRevertTo focusRevertTo = FocusRevertTo.NONE;
+-    private final ArrayList<OnWindowModificationListener> onWindowModificationListeners = new ArrayList<>();
++    private final java.util.concurrent.CopyOnWriteArrayList<OnWindowModificationListener> onWindowModificationListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+ 
+     public interface OnWindowModificationListener {
+         default void onMapWindow(Window window) {}
+@@ -330,44 +330,51 @@ public class WindowManager extends XResourceManager {
+     }
+ 
+     private void triggerOnMapWindow(Window window) {
+-        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+-            onWindowModificationListeners.get(i).onMapWindow(window);
++        Object[] snapshot = onWindowModificationListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnWindowModificationListener) snapshot[i]).onMapWindow(window);
+         }
+     }
+ 
+     private void triggerOnUnmapWindow(Window window) {
+-        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+-            onWindowModificationListeners.get(i).onUnmapWindow(window);
++        Object[] snapshot = onWindowModificationListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnWindowModificationListener) snapshot[i]).onUnmapWindow(window);
+         }
+     }
+ 
+     private void triggerOnChangeWindowZOrder(Window window) {
+-        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+-            onWindowModificationListeners.get(i).onChangeWindowZOrder(window);
++        Object[] snapshot = onWindowModificationListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnWindowModificationListener) snapshot[i]).onChangeWindowZOrder(window);
+         }
+     }
+ 
+     protected void triggerOnUpdateWindowContent(Window window) {
+-        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+-            onWindowModificationListeners.get(i).onUpdateWindowContent(window);
++        Object[] snapshot = onWindowModificationListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnWindowModificationListener) snapshot[i]).onUpdateWindowContent(window);
+         }
+     }
+ 
+     protected void triggerOnUpdateWindowGeometry(Window window, boolean resized) {
+-        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+-            onWindowModificationListeners.get(i).onUpdateWindowGeometry(window, resized);
++        Object[] snapshot = onWindowModificationListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnWindowModificationListener) snapshot[i]).onUpdateWindowGeometry(window, resized);
+         }
+     }
+ 
+     public void triggerOnUpdateWindowAttributes(Window window, Bitmask mask) {
+-        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+-            onWindowModificationListeners.get(i).onUpdateWindowAttributes(window, mask);
++        Object[] snapshot = onWindowModificationListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnWindowModificationListener) snapshot[i]).onUpdateWindowAttributes(window, mask);
+         }
+     }
+ 
+     public void triggerOnModifyWindowProperty(Window window, Property property) {
+-        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+-            onWindowModificationListeners.get(i).onModifyWindowProperty(window, property);
++        Object[] snapshot = onWindowModificationListeners.toArray();
++        for (int i = snapshot.length-1; i >= 0; i--) {
++            ((OnWindowModificationListener) snapshot[i]).onModifyWindowProperty(window, property);
+         }
+     }
+ }

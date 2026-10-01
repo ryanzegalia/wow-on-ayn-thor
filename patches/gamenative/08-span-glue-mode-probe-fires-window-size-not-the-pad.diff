@@ -1,0 +1,174 @@
+diff --git a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+index 5122e471..c8422744 100644
+--- a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
++++ b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+@@ -11,11 +11,12 @@ import android.view.ViewGroup
+ import android.view.WindowManager
+ import android.widget.FrameLayout
+ import app.gamenative.PluviaApp
+-import com.winlator.renderer.GPUImage
++import com.winlator.renderer.NativeTexture
+ import com.winlator.renderer.VulkanRenderer
+ import com.winlator.widget.TouchpadView
+ import com.winlator.widget.XServerView
+ import com.winlator.xserver.Drawable
++import com.winlator.xserver.Window
+ import com.winlator.xserver.XServer
+ import timber.log.Timber
+ 
+@@ -221,22 +222,50 @@ class SpanDisplayController(
+ 
+     /**
+      * Runs on the Present thread for every WoW frame. Every PROBE_EVERY-th full-screen frame it reads
+-     * a few pixels straight from the frame's locked AHardwareBuffer mapping: both side strips pure
+-     * black + something lit in the box = glue; otherwise world. All-black frames (fades) count as
+-     * neither. ENTER_RUN / EXIT_RUN consecutive verdicts flip the mode, so it never flickers.
++     * a few pixels straight from the frame's CPU mapping and decides glue vs world:
++     *  - FFSpan's in-world marker (a small magenta square at the canvas's bottom-right corner, drawn
++     *    only while the in-world UI exists) present = world. Addons never run on glue screens.
++     *  - letterbox (both side strips pure black, something lit in the box) = glue.
++     *  - neither: glue once the marker has been seen this session (FFSpan is known to work, so its
++     *    absence means login / character select / loading), otherwise world (safe fallback when
++     *    FFSpan is missing -- only letterboxed screens switch).
++     * All-black frames (fades) count as neither. ENTER_RUN / EXIT_RUN consecutive verdicts flip the
++     * mode, so it never flickers.
+      */
+     private inner class GlueProbe : VulkanRenderer.SpanFrameProbe {
+         private var frame = 0
++        private var probes = 0
+         private var glueRun = 0
+         private var worldRun = 0
+         private var inGlue = false
++        private var markerSeen = false
++        private var loggedFirst = false
++        private var loggedSample = false
++        private val tally = IntArray(3)
+ 
+-        override fun onFrame(pixmap: Drawable, rootX: Int, rootY: Int) {
++        override fun onFrame(window: Window, pixmap: Drawable, rootX: Int, rootY: Int) {
+             if (++frame % PROBE_EVERY != 0) return
+             val w = screenW
+             val h = screenH
+-            if (rootX != 0 || rootY != 0 || pixmap.width.toInt() != w || pixmap.height.toInt() != h) return
++            if (!loggedFirst) {
++                loggedFirst = true
++                val tex = pixmap.texture
++                Timber.tag(TAG).i(
++                    "glue probe: first frame window=%dx%d pixmap=%dx%d root=(%d,%d) texture=%s stride=%d",
++                    window.width.toInt(), window.height.toInt(), pixmap.width.toInt(), pixmap.height.toInt(), rootX, rootY,
++                    tex?.javaClass?.simpleName, (tex as? NativeTexture)?.stride?.toInt() ?: -1,
++                )
++            }
++            if (rootX != 0 || rootY != 0 || window.width.toInt() != w || window.height.toInt() != h) return
++            if (pixmap.height.toInt() != h || pixmap.width.toInt() < w) return
+             val verdict = synchronized(pixmap.renderLock) { classify(pixmap, w, h) }
++            tally[verdict]++
++            if (++probes % SUMMARY_EVERY == 0) {
++                Timber.tag(TAG).i(
++                    "glue probe: %d probes unknown=%d glue=%d world=%d markerSeen=%s mode=%s",
++                    probes, tally[UNKNOWN], tally[GLUE], tally[WORLD], markerSeen, if (inGlue) "glue" else "split",
++                )
++            }
+             when (verdict) {
+                 GLUE -> { glueRun++; worldRun = 0 }
+                 WORLD -> { worldRun++; glueRun = 0 }
+@@ -247,27 +276,54 @@ class SpanDisplayController(
+         }
+ 
+         private fun classify(pixmap: Drawable, w: Int, h: Int): Int {
+-            val img = pixmap.texture as? GPUImage ?: return UNKNOWN
+-            val buf = img.virtualData ?: return UNKNOWN
+-            val stride = if (img.stride > 0) img.stride.toInt() else w
++            val tex = pixmap.texture as? NativeTexture
++            val buf = tex?.virtualData ?: pixmap.buffer ?: return UNKNOWN
++            val stride = when {
++                tex != null && tex.stride > 0 -> tex.stride.toInt()
++                else -> buf.capacity() / (pixmap.height * 4)
++            }
++            if (stride < w) return UNKNOWN
+             val gx = glueX()
+             if (gx <= 0) return UNKNOWN
+             val limit = buf.capacity()
+-            fun lit(x: Int, y: Int): Boolean {
++            fun px(x: Int, y: Int): Int {
+                 val i = (y * stride + x) * 4
+-                if (i < 0 || i + 2 >= limit) return false
+-                return buf.get(i).toInt() != 0 || buf.get(i + 1).toInt() != 0 || buf.get(i + 2).toInt() != 0
++                if (i < 0 || i + 2 >= limit) return 0
++                return (buf.get(i).toInt() and 0xff) or ((buf.get(i + 1).toInt() and 0xff) shl 8) or
++                    ((buf.get(i + 2).toInt() and 0xff) shl 16)
++            }
++            fun lit(x: Int, y: Int) = px(x, y) != 0
++            // Magenta is byte-order proof: channel 0 and 2 high, channel 1 low, in RGBA or BGRA.
++            fun magenta(x: Int, y: Int): Boolean {
++                val p = px(x, y)
++                return (p and 0xff) > 200 && (p shr 8 and 0xff) < 60 && (p shr 16 and 0xff) > 200
+             }
++            if (!loggedSample) {
++                loggedSample = true
++                Timber.tag(TAG).i(
++                    "glue probe: sample stride=%d cap=%d corner=%06x mid=%06x left=%06x right=%06x",
++                    stride, limit, px(w - MARKER_INSET, h - MARKER_INSET), px(w / 2, h / 2), px(gx / 2, h / 2), px(w - gx / 2, h / 2),
++                )
++            }
++            if (magenta(w - MARKER_INSET, h - MARKER_INSET) && magenta(w - MARKER_INSET - 1, h - MARKER_INSET - 1)) {
++                markerSeen = true
++                return WORLD
++            }
++            var sidesLit = false
+             var boxLit = false
+             for (fy in ROWS) {
+                 val y = (h * fy).toInt()
+                 for (fx in COLS) {
+-                    if (lit((gx * fx).toInt(), y)) return WORLD // left strip
+-                    if (lit(w - 1 - (gx * fx).toInt(), y)) return WORLD // right strip
++                    if (!sidesLit && (lit((gx * fx).toInt(), y) || lit(w - 1 - (gx * fx).toInt(), y))) sidesLit = true
+                     if (!boxLit && lit(gx + ((w - 2 * gx) * fx).toInt(), y)) boxLit = true
+                 }
+             }
+-            return if (boxLit) GLUE else UNKNOWN
++            return when {
++                !sidesLit && boxLit -> GLUE
++                !sidesLit && !boxLit -> UNKNOWN
++                markerSeen -> GLUE
++                else -> WORLD
++            }
+         }
+     }
+ 
+@@ -283,8 +339,11 @@ class SpanDisplayController(
+     private companion object {
+         const val TAG = "SpanDisplay"
+         const val PROBE_EVERY = 8
++        const val SUMMARY_EVERY = 450 // ~2 min at 30 fps
+         const val ENTER_RUN = 3
+         const val EXIT_RUN = 2
++        /** FFSpan draws a 6px magenta square flush with the canvas's bottom-right corner; sample inside it. */
++        const val MARKER_INSET = 3
+         const val UNKNOWN = 0
+         const val GLUE = 1
+         const val WORLD = 2
+diff --git a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+index 6a4d8439..62acc2f7 100644
+--- a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
++++ b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+@@ -515,13 +515,16 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+         for (VulkanRenderer m : mirrors) m.mirrorUpdateWindowContentDirect(window, pixmap, xOff, yOff);
+         SpanFrameProbe probe = spanFrameProbe;
+         if (probe != null && pixmap != null) {
+-            probe.onFrame(pixmap, window.getRootX() + xOff, window.getRootY() + yOff);
++            probe.onFrame(window, pixmap, window.getRootX() + xOff, window.getRootY() + yOff);
+         }
+     }
+ 
+-    /** Span mode: sees every Present-path frame (root position of the pixmap) before it is released. */
++    /**
++     * Span mode: sees every Present-path frame (root position of the pixmap) before it is released.
++     * pixmap.width is the buffer's padded row length, not the image width -- use the window's size.
++     */
+     public interface SpanFrameProbe {
+-        void onFrame(Drawable pixmap, int rootX, int rootY);
++        void onFrame(Window window, Drawable pixmap, int rootX, int rootY);
+     }
+ 
+     private volatile SpanFrameProbe spanFrameProbe;

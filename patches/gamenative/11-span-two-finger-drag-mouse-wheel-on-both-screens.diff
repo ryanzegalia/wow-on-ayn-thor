@@ -1,0 +1,157 @@
+diff --git a/app/src/main/java/app/gamenative/data/TouchGestureConfig.kt b/app/src/main/java/app/gamenative/data/TouchGestureConfig.kt
+index 108e15f8..257952ce 100644
+--- a/app/src/main/java/app/gamenative/data/TouchGestureConfig.kt
++++ b/app/src/main/java/app/gamenative/data/TouchGestureConfig.kt
+@@ -162,6 +162,8 @@ data class TouchGestureConfig(
+         const val PAN_INVERTED_MIDDLE_MOUSE = "inverted_middle_mouse_pan"
+         const val PAN_LEFT_CLICK_DRAG = "left_click_drag"
+         const val PAN_RIGHT_CLICK_DRAG = "right_click_drag"
++        // FF span (WoW bottom screen, 2026-09-25): the drag scrolls the list under the fingers
++        const val PAN_MOUSE_WHEEL = "mouse_wheel"
+ 
+         // ── Action identifiers: pinch (zoom) ─────────────────────────────
+         const val ZOOM_SCROLL_WHEEL = "scroll_wheel"
+@@ -221,6 +223,16 @@ data class TouchGestureConfig(
+             threeFingerHoldEnabled = false,
+         )
+ 
++        /**
++         * FF span (AYN Thor, 2026-09-25): a span container with no saved gesture JSON gets a
++         * two-finger drag = mouse wheel on the TOP screen too (the Shop opens there; the
++         * arrow-key default turned the character). A saved per-game choice always wins.
++         */
++        fun forContainer(json: String?, span: Boolean): TouchGestureConfig {
++            val config = fromJson(json)
++            return if (span && json.isNullOrBlank()) config.copy(twoFingerDragAction = PAN_MOUSE_WHEEL) else config
++        }
++
+         /** Parse from a JSON string. Returns compatibility-safe defaults when the string is null, blank or invalid. */
+         fun fromJson(json: String?): TouchGestureConfig {
+             if (json.isNullOrBlank()) return compatibilityDefaults()
+@@ -311,6 +323,7 @@ data class TouchGestureConfig(
+             PAN_INVERTED_MIDDLE_MOUSE,
+             PAN_LEFT_CLICK_DRAG,
+             PAN_RIGHT_CLICK_DRAG,
++            PAN_MOUSE_WHEEL,
+         )
+ 
+         val MOUSE_DRAG_MOVEMENT_MODES = listOf(
+diff --git a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+index 0802092e..c938e23d 100644
+--- a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
++++ b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+@@ -259,7 +259,9 @@ class SpanDisplayController(
+     /**
+      * The bottom strips' gestures: a COPY of the top screen's config (never the same object, so
+      * nothing here can change the top screen), normalised for a touchscreen that drives a WoW UI --
+-     * tap = left click, drag = left-click drag, long press = right CLICK after 300 ms.
++     * tap = left click, drag = left-click drag, long press = right CLICK after 300 ms, and a
++     * TWO-finger drag = mouse wheel (2026-09-25: scroll the Shop and other lists by touch; the
++     * inherited top-screen default was arrow keys, which turned the character).
+      * `holdMouseButtonWhileTouching` and double-tap are forced off because both pre-empt the long
+      * press (TouchpadView.handleTsDown: the hold path returns before the long-press timer is
+      * scheduled, and a second nearby tap cancels the timer and emits a double left click).
+@@ -272,6 +274,7 @@ class SpanDisplayController(
+             tapAction = TouchGestureConfig.ACTION_LEFT_CLICK,
+             dragEnabled = true,
+             dragAction = TouchGestureConfig.PAN_LEFT_CLICK_DRAG,
++            twoFingerDragAction = TouchGestureConfig.PAN_MOUSE_WHEEL,
+             holdMouseButtonWhileTouchingEnabled = false,
+             doubleTapEnabled = false,
+             longPressEnabled = true,
+diff --git a/app/src/main/java/app/gamenative/ui/component/dialog/TouchGestureSettingsDialog.kt b/app/src/main/java/app/gamenative/ui/component/dialog/TouchGestureSettingsDialog.kt
+index f46a2ea1..a100dba1 100644
+--- a/app/src/main/java/app/gamenative/ui/component/dialog/TouchGestureSettingsDialog.kt
++++ b/app/src/main/java/app/gamenative/ui/component/dialog/TouchGestureSettingsDialog.kt
+@@ -571,6 +571,7 @@ private fun panSingleActionLabel(action: String): String = when (action) {
+     PAN_INVERTED_ARROW_KEYS -> stringResource(R.string.gesture_pan_inverted_arrow_keys)
+     PAN_LEFT_CLICK_DRAG -> stringResource(R.string.gesture_pan_left_click_drag)
+     PAN_RIGHT_CLICK_DRAG -> stringResource(R.string.gesture_pan_right_click_drag)
++    TouchGestureConfig.PAN_MOUSE_WHEEL -> "Mouse wheel (scroll)"
+     else -> action
+ }
+ 
+diff --git a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+index 016a5ef0..c634071c 100644
+--- a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
++++ b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+@@ -576,7 +576,7 @@ fun XServerScreen(
+     var isTouchscreenModeActive by remember { mutableStateOf(container.isTouchscreenMode) }
+     var isShooterModeActive by remember(container.id) { mutableStateOf(container.isShooterMode) }
+     var currentGestureConfig by remember {
+-        mutableStateOf(app.gamenative.data.TouchGestureConfig.fromJson(container.getGestureConfig()))
++        mutableStateOf(app.gamenative.data.TouchGestureConfig.forContainer(container.getGestureConfig(), container.getExtra("spanDisplay", "false").equals("true", true)))
+     }
+     var currentShooterConfig by remember(container.id) {
+         mutableStateOf(ShooterModeConfig.fromJson(container.getShooterConfig()))
+@@ -2247,7 +2247,7 @@ fun XServerScreen(
+                             } else if (container.isTouchscreenMode()) {
+                                 PluviaApp.touchpadView?.setTouchscreenMode(true)
+                                 // Apply per-game gesture configuration
+-                                val gestureConfig = app.gamenative.data.TouchGestureConfig.fromJson(container.getGestureConfig())
++                                val gestureConfig = app.gamenative.data.TouchGestureConfig.forContainer(container.getGestureConfig(), container.getExtra("spanDisplay", "false").equals("true", true))
+                                 PluviaApp.touchpadView?.setGestureConfig(gestureConfig)
+                             }
+                             Timber.d("WinHandler configured: preferredInputApi=%s, dinputMapperType=0x%02x", PreferredInputApi.values()[container.inputType], container.dinputMapperType)
+diff --git a/app/src/main/java/com/winlator/widget/TouchpadView.java b/app/src/main/java/com/winlator/widget/TouchpadView.java
+index 707a59f6..2c0143db 100644
+--- a/app/src/main/java/com/winlator/widget/TouchpadView.java
++++ b/app/src/main/java/com/winlator/widget/TouchpadView.java
+@@ -46,6 +46,9 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
+     private boolean pointerButtonLeftEnabled;
+     private boolean pointerButtonRightEnabled;
+     private float scrollAccumY;
++    // FF span: two-finger drag as a mouse wheel (PAN_MOUSE_WHEEL) -- px of finger travel per notch
++    private static final float WHEEL_STEP_PX = 36f;
++    private float wheelAccumY;
+     private boolean scrolling;
+     private float sensitivity;
+     private final XServer xServer;
+@@ -1208,6 +1211,13 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
+                     twoFingerDragging = true;
+                     performClickDragAt(midX, midY, twoFingerDragAction);
+                 }
++            } else if (TouchGestureConfig.PAN_MOUSE_WHEEL.equals(TouchGestureConfig.primaryAction(twoFingerDragAction))) {
++                // FF span: the wheel acts on whatever is under the pointer, so put it under the
++                // fingers first; small moves accumulate into whole notches (no 3 px dead zone).
++                twoFingerDragging = true;
++                float[] pt = XForm.transformPoint(xform, midX, midY);
++                moveCursorTo((int) pt[0], (int) pt[1]);
++                performWheelPan(dy);
+             } else if (Math.abs(dx) > 3f || Math.abs(dy) > 3f) {
+                 twoFingerDragging = true;
+                 performPanAction(dx, dy, twoFingerDragAction);
+@@ -1245,6 +1255,7 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
+         }
+         releasePanKeys();
+         releaseAllDragButtons();
++        wheelAccumY = 0;
+         twoFingerDragging = false;
+         twoFingerTapPossible = false;
+         twoFingerGestureMode = TWO_FINGER_GESTURE_NONE;
+@@ -1412,6 +1423,7 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
+         // Clean up two-finger state
+         releasePanKeys();
+         releaseAllDragButtons();
++        wheelAccumY = 0;
+         twoFingerDragging = false;
+         twoFingerTapPossible = false;
+         twoFingerGestureMode = TWO_FINGER_GESTURE_NONE;
+@@ -1853,6 +1865,17 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
+         }
+     }
+ 
++    // Natural (phone) direction: fingers moving UP bring later rows into view = wheel DOWN.
++    private void performWheelPan(float dy) {
++        wheelAccumY += dy;
++        while (Math.abs(wheelAccumY) >= WHEEL_STEP_PX) {
++            Pointer.Button button = wheelAccumY < 0 ? Pointer.Button.BUTTON_SCROLL_DOWN : Pointer.Button.BUTTON_SCROLL_UP;
++            xServer.injectPointerButtonPress(button);
++            xServer.injectPointerButtonRelease(button);
++            wheelAccumY += wheelAccumY < 0 ? WHEEL_STEP_PX : -WHEEL_STEP_PX;
++        }
++    }
++
+     private void performPanAction(float dx, float dy, String action) {
+         pressPanComboModifiers(action);
+         action = TouchGestureConfig.primaryAction(action);

@@ -1,0 +1,260 @@
+diff --git a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+index c8422744..519fd71d 100644
+--- a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
++++ b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+@@ -10,6 +10,7 @@ import android.view.View
+ import android.view.ViewGroup
+ import android.view.WindowManager
+ import android.widget.FrameLayout
++import android.widget.LinearLayout
+ import app.gamenative.PluviaApp
+ import com.winlator.renderer.NativeTexture
+ import com.winlator.renderer.VulkanRenderer
+@@ -21,19 +22,25 @@ import com.winlator.xserver.XServer
+ import timber.log.Timber
+ 
+ /**
+- * Span mode (AYN Thor dual screen): the Wine X screen is wider than the top panel.
+- * The primary renderer shows X x in [0, splitX) at 1:1 on display 0; this controller puts a
+- * second XServerView (a "mirror" VulkanRenderer fed by the primary) on the presentation display
+- * showing x in [splitX, W) at 1:1, with a touchscreen-mode TouchpadView on top mapped to that region.
++ * Span mode (AYN Thor dual screen): the Wine X screen is wider than the top panel, and the game
++ * view sits in its CENTRE. The primary renderer shows X x in [topX, topX + splitX) at 1:1 on
++ * display 0 (topX = (W - splitX) / 2: 620..2540 on a 3160 screen). The presentation display gets
++ * the two side strips stitched together: its left half shows [0, topX), its right half shows
++ * [topX + splitX, W), each through its own "mirror" XServerView/VulkanRenderer fed by the primary,
++ * each with a touchscreen-mode TouchpadView mapped to its strip.
+  *
+- * The secondary view is never registered as xServer's renderer and never becomes
++ * Why centre: a game centres things on its window -- WoW's freelook cursor, crosshair, action
++ * bars, dialogs, and its 16:9 login / character select / loading box -- so with the game view in
++ * the middle all of those land on the top screen, and whatever the game anchors to the screen
++ * edges (minimap, chat, bags) lands in the strips, i.e. on the bottom screen.
++ *
++ * The secondary views are never registered as xServer's renderer and never become
+  * PluviaApp.xServerView / PluviaApp.touchpadView.
+  *
+- * Glue mode: WoW draws its login / character select / loading screens (and in-game cinematics)
+- * into a centred 16:9 box -- on a 3160x1080 screen that is x 620..2540, exactly the top panel's
+- * width -- with pure black on both sides. A probe on the Present path spots that letterbox and
+- * then the top panel shows the box at 1:1 while the bottom panel goes black and ignores touch,
+- * so menus sit on the top screen only. In-world the normal split returns.
++ * Glue mode: WoW draws its login / character select / loading screens (and pre-rendered movies)
++ * into a centred 16:9 box -- on a 3160x1080 screen that is x 620..2540, exactly the top panel --
++ * with pure black on both sides. A probe on the Present path spots that; the bottom panel then
++ * goes black and ignores touch, so menus sit on the top screen only. In-world the strips return.
+  */
+ class SpanDisplayController(
+     private val context: Context,
+@@ -41,20 +48,24 @@ class SpanDisplayController(
+     private val primary: VulkanRenderer,
+     private val splitX: Int,
+ ) {
++    /** One side strip shown on the presentation display. */
++    private class Strip(val srcX: Int, val srcW: Int, val view: XServerView, val renderer: VulkanRenderer, val touch: TouchpadView)
++
+     private val displayManager = context.getSystemService(DisplayManager::class.java)
+     private var presentation: SpanPresentation? = null
+-    private var secondaryView: XServerView? = null
+-    private var secondaryRenderer: VulkanRenderer? = null
+-    private var secondaryTouch: TouchpadView? = null
++    private var strips: List<Strip> = emptyList()
+     private var started = false
+     private val mainHandler = Handler(Looper.getMainLooper())
+ 
+-    /** Main-thread state: true while the top panel shows the centred 16:9 glue box. */
++    /** Main-thread state: true while the bottom panel is blanked for a glue screen. */
+     private var glueMode = false
+ 
+     private val screenW: Int get() = xServer.screenInfo.width.toInt()
+     private val screenH: Int get() = xServer.screenInfo.height.toInt()
+ 
++    /** Left edge of the top panel's source rect: the game view is centred on the X screen. */
++    val topX: Int get() = maxOf(0, (screenW - splitX) / 2)
++
+     private val displayListener = object : DisplayManager.DisplayListener {
+         override fun onDisplayAdded(displayId: Int) = update()
+ 
+@@ -74,8 +85,11 @@ class SpanDisplayController(
+     fun start() {
+         if (started) return
+         started = true
+-        Timber.tag(TAG).i("start: X screen %dx%d, splitX=%d, top src=(0,0,%d,%d)", screenW, screenH, splitX, splitX, screenH)
+-        primary.setSpanViewport(0, 0, splitX, screenH)
++        val tx = topX
++        Timber.tag(TAG).i("start: X screen %dx%d, splitX=%d, top src=(%d,0,%d,%d)", screenW, screenH, splitX, tx, splitX, screenH)
++        primary.setSpanViewport(tx, 0, splitX, screenH)
++        // Top-screen touches land in [topX, topX + splitX) at 1:1.
++        PluviaApp.touchpadView?.setAbsoluteRegion(tx, 0, splitX, screenH)
+         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+         update()
+         if (glueX() > 0) primary.setSpanFrameProbe(GlueProbe())
+@@ -108,10 +122,11 @@ class SpanDisplayController(
+ 
+         val w = screenW
+         val h = screenH
+-        val srcW = w - splitX
++        val tx = topX
++        val rightX = tx + splitX
+         Timber.tag(TAG).i(
+-            "display id=%d name=%s mode=%dx%d; bottom src=(%d,0,%d,%d)",
+-            target.displayId, target.name, target.mode.physicalWidth, target.mode.physicalHeight, splitX, srcW, h,
++            "display id=%d name=%s mode=%dx%d; bottom = strips x=0..%d + x=%d..%d",
++            target.displayId, target.name, target.mode.physicalWidth, target.mode.physicalHeight, tx, rightX, w,
+         )
+ 
+         val p = SpanPresentation(context, target)
+@@ -132,67 +147,83 @@ class SpanDisplayController(
+         }
+         Timber.tag(TAG).i("presentation shown on display %d", target.displayId)
+ 
++        // Left half of the panel = left strip, right half = right strip, each at 1:1.
++        val row = LinearLayout(p.context).apply { orientation = LinearLayout.HORIZONTAL }
++        p.root.addView(
++            row,
++            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
++        )
++        val built = ArrayList<Strip>(2)
++        for ((srcX, srcW) in listOf(0 to tx, rightX to w - rightX)) {
++            if (srcW <= 0) continue
++            val strip = buildStrip(p, srcX, srcW, h)
++            if (strip == null) {
++                Timber.tag(TAG).w("strip XServerView has no VulkanRenderer; dismissing")
++                built.forEach { primary.removeMirror(it.renderer); it.view.release() }
++                presentation = null
++                p.dismiss()
++                return
++            }
++            val cell = FrameLayout(p.context)
++            cell.addView(strip.view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
++            cell.addView(strip.touch)
++            row.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, srcW.toFloat()))
++            built.add(strip)
++            primary.addMirror(strip.renderer)
++        }
++        strips = built
++        Timber.tag(TAG).i("mirror renderers attached: %s", built.joinToString { "x=${it.srcX}..${it.srcX + it.srcW}" })
++    }
++
++    private fun buildStrip(p: SpanPresentation, srcX: Int, srcW: Int, h: Int): Strip? {
+         val view = XServerView(p.context, xServer, "vulkan")
+         val r = view.renderer as? VulkanRenderer
+         if (r == null) {
+-            Timber.tag(TAG).w("secondary XServerView has no VulkanRenderer; dismissing")
+             view.release()
+-            presentation = null
+-            p.dismiss()
+-            return
++            return null
+         }
+         r.setMirror(true)
+         r.setVkPresentMode(primary.getVkPresentMode())
+         primary.getUnviewableWMClasses()?.let { r.setUnviewableWMClasses(*it) }
+-        r.setSpanViewport(if (glueMode) w else splitX, 0, srcW, h)
++        // Off-canvas source = the clear colour, i.e. black while a glue screen is up.
++        r.setSpanViewport(if (glueMode) screenW else srcX, 0, srcW, h)
+         r.setCursorVisible(primary.isCursorVisible())
+-        p.root.addView(
+-            view,
+-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+-        )
+ 
+         val touch = TouchpadView(p.context, xServer, false)
+         touch.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+         // Same gestures as the top screen (TouchGestureConfig has no scroll-wheel two-finger-drag action; pinch = wheel).
+         PluviaApp.touchpadView?.getGestureConfig()?.let { touch.setGestureConfig(it) }
+         touch.setTouchscreenMode(true)
+-        touch.setAbsoluteRegion(splitX, 0, srcW, h)
++        touch.setAbsoluteRegion(srcX, 0, srcW, h)
+         if (glueMode) touch.setOnTouchListener(swallowTouch)
+-        p.root.addView(touch)
+-
+-        secondaryView = view
+-        secondaryRenderer = r
+-        secondaryTouch = touch
+-        primary.addMirror(r)
+-        Timber.tag(TAG).i("mirror renderer attached (touch region x=%d..%d)", splitX, w)
++        return Strip(srcX, srcW, view, r, touch)
+     }
+ 
+     private fun teardown() {
+-        val r = secondaryRenderer
+-        val v = secondaryView
++        val s = strips
+         val p = presentation
+-        if (r == null && v == null && p == null) return
++        if (s.isEmpty() && p == null) return
+         Timber.tag(TAG).i("teardown: display=%s", p?.display?.displayId)
+         presentation = null
+-        if (r != null) primary.removeMirror(r)
++        strips = emptyList()
++        s.forEach { primary.removeMirror(it.renderer) }
+         try {
+             p?.root?.removeAllViews()
+         } catch (e: Exception) {
+             Timber.tag(TAG).w(e, "removeAllViews failed")
+         }
+-        try {
+-            v?.release()
+-        } catch (e: Exception) {
+-            Timber.tag(TAG).w(e, "secondary view release failed")
++        for (strip in s) {
++            try {
++                strip.view.release()
++            } catch (e: Exception) {
++                Timber.tag(TAG).w(e, "strip view release failed")
++            }
+         }
+         try {
+             p?.dismiss()
+         } catch (e: Exception) {
+             Timber.tag(TAG).w(e, "presentation dismiss failed")
+         }
+-        secondaryRenderer = null
+-        secondaryView = null
+-        secondaryTouch = null
+         Timber.tag(TAG).i("teardown done")
+     }
+ 
+@@ -210,13 +241,19 @@ class SpanDisplayController(
+             glueMode = on
+             val w = screenW
+             val h = screenH
+-            val topX = if (on) glueX() else 0
+-            Timber.tag(TAG).i("glue mode %s: top src x=%d..%d, bottom %s", on, topX, topX + splitX, if (on) "blank" else "x=$splitX..$w")
+-            primary.setSpanViewport(topX, 0, splitX, h)
+-            PluviaApp.touchpadView?.setAbsoluteRegion(topX, 0, splitX, h)
+-            // Off-canvas source = the clear colour, i.e. a black bottom panel.
+-            secondaryRenderer?.setSpanViewport(if (on) w else splitX, 0, w - splitX, h)
+-            secondaryTouch?.setOnTouchListener(if (on) swallowTouch else null)
++            // The glue box is the centred 16:9 area, which is where the top panel already looks;
++            // only a non-centred split would need to move it.
++            val tx = if (on && glueX() > 0) glueX() else topX
++            Timber.tag(TAG).i("glue mode %s: top src x=%d..%d, bottom %s", on, tx, tx + splitX, if (on) "blank" else "strips")
++            if (primary.spanSrcX != tx) {
++                primary.setSpanViewport(tx, 0, splitX, h)
++                PluviaApp.touchpadView?.setAbsoluteRegion(tx, 0, splitX, h)
++            }
++            for (s in strips) {
++                // Off-canvas source = the clear colour, i.e. a black bottom panel.
++                s.renderer.setSpanViewport(if (on) w else s.srcX, 0, s.srcW, h)
++                s.touch.setOnTouchListener(if (on) swallowTouch else null)
++            }
+         }
+     }
+ 
+diff --git a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+index 52a51bfc..e55b6d12 100644
+--- a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
++++ b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+@@ -2655,8 +2655,8 @@ fun XServerScreen(
+                         val spanW = spanXServer.screenInfo.width.toInt()
+                         val spanH = spanXServer.screenInfo.height.toInt()
+                         val splitX = spanSplitXPref.coerceIn(1, maxOf(1, spanW - 1))
+-                        // Top-screen touches land in [0, splitX) at 1:1.
+-                        PluviaApp.touchpadView?.setAbsoluteRegion(0, 0, splitX, spanH)
++                        // start() maps top-screen touches onto the centred game view.
++                        Timber.tag("SpanDisplay").d("span %dx%d split %d", spanW, spanH, splitX)
+                         SpanDisplayController(
+                             context = context,
+                             xServer = spanXServer,

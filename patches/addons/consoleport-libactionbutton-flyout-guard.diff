@@ -1,0 +1,20 @@
+--- a/ConsolePort/Libs/External/LibActionButton-1.0/LibActionButton-1.0.lua
++++ b/ConsolePort/Libs/External/LibActionButton-1.0/LibActionButton-1.0.lua
+@@ -1002,7 +1002,7 @@
+ 		-- 300 is a safe upper limit in 10.0.2, the highest known spell is 229
+ 		for flyoutID = 1, 300 do
+ 			local success, _, _, numSlots, isKnown = pcall(GetFlyoutInfo, flyoutID)
+-			if success then
++			if success and type(numSlots) == "number" then
+ 				lib.FlyoutInfo[flyoutID] = { numSlots = numSlots, isKnown = isKnown, slots = {} }
+ 				for slotID = 1, numSlots do
+ 					local spellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, slotID)
+@@ -1030,7 +1030,7 @@
+ 
+ 		for flyoutID, data in pairs(lib.FlyoutInfo) do
+ 			local success, _, _, numSlots, isKnown = pcall(GetFlyoutInfo, flyoutID)
+-			if success then
++			if success and type(numSlots) == "number" then
+ 				data.isKnown = isKnown
+ 				for slotID = 1, numSlots do
+ 					local spellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, slotID)

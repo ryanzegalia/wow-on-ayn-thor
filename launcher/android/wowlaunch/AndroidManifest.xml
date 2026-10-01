@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.ff.wowlaunch"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
+
+    <application
+        android:allowBackup="false"
+        android:label="WoW Launcher">
+
+        <!-- Real activity. Tiles target the aliases below; the alias name selects the flavor. -->
+        <activity
+            android:name=".LaunchActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- MAIN/LAUNCHER on every alias is required. Without it the package registers no
+             activity resolver entry and the home-screen launcher does nothing on tap. -->
+        <activity-alias
+            android:name=".Retail"
+            android:targetActivity=".LaunchActivity"
+            android:exported="true"
+            android:label="World of Warcraft"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".Classic"
+            android:targetActivity=".LaunchActivity"
+            android:exported="true"
+            android:label="WoW Classic"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".Beta"
+            android:targetActivity=".LaunchActivity"
+            android:exported="true"
+            android:label="WoW Forever"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+    </application>
+</manifest>

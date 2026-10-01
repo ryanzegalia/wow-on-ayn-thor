@@ -1,0 +1,13 @@
+diff --git a/app/src/main/java/com/winlator/winhandler/WinHandler.java b/app/src/main/java/com/winlator/winhandler/WinHandler.java
+index bc3b7a00..0021e83b 100644
+--- a/app/src/main/java/com/winlator/winhandler/WinHandler.java
++++ b/app/src/main/java/com/winlator/winhandler/WinHandler.java
+@@ -731,7 +731,7 @@ public class WinHandler {
+                     "gamepad_shm"
+             );
+ 
+-            if (!gamepadShmDir.exists() && !gamepadShmDir.mkdirs()) {
++            if (!gamepadShmDir.isDirectory() && !gamepadShmDir.mkdirs() && !gamepadShmDir.isDirectory()) {
+                 throw new IOException("Failed to create directory: " + gamepadShmDir.getAbsolutePath());
+             }
+ 

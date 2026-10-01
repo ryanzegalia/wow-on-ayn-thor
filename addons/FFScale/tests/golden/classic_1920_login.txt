@@ -1,0 +1,156 @@
+== results ==
+[1] "client 5.5.4 (project 19)"
+[2] "bind PADRSTICK: \"\" -> OPENCHAT (true)"
+[3] "bind PAD1: \"\" -> ACTIONBUTTON1 (true)"
+[4] "bind PAD2: \"\" -> ACTIONBUTTON3 (true)"
+[5] "bind PAD3: \"\" -> ACTIONBUTTON5 (true)"
+[6] "bind PAD4: \"\" -> ACTIONBUTTON7 (true)"
+[7] "bind PADLSTICK: \"\" -> JUMP (true)"
+[8] "slot 1: spell 100 Spell100"
+[9] "slot 2: spell 200 Spell200"
+[10] "slot 3: item 300 Item300"
+[11] "slot 4: macro 4 Macro4"
+[12] "slot 5: spell 500 Spell500"
+[13] "slot 6: empty  "
+[14] "slot 7: empty  "
+[15] "slot 8: empty  "
+[16] "slot 9: empty  "
+[17] "slot 10: empty  "
+[18] "slot 11: empty  "
+[19] "slot 12: empty  "
+[20] "numPresets=2  customLayouts=1"
+[21] "custom[1] = SomeoneElse (type 1)"
+[22] "cloned active \"Classic\" -> new custom index 2"
+[23] "ObjectiveTracker TextSize 16, LEFT column under party (Option B, 09-22) -> SKIP (system absent)"
+[24] "UnitFrame(Player) 120% + bottom-centre -> OK: size 0->4.0; anchor was [BOTTOMRIGHT -> UIParent BOTTOM x=-300 y=250]"
+[25] "UnitFrame(Target) 120% + stacked above player, buffs on top -> OK: size 0->4.0; BuffsOnTop inserted 1; anchor was [BOTTOMLEFT -> UIParent BOTTOM x=300 y=250]"
+[26] "Bags -> RESTORE original anchor (retail: MicroButtonAndBagsBar; Classic: its preset) -> OK: anchor was [BOTTOMRIGHT -> MainMenuBarArtFrame BOTTOMRIGHT x=0 y=0]"
+[27] "Minimap Size 100 -> 80 pct -> OK: size 5->3.0; anchor was [TOPRIGHT -> UIParent TOPRIGHT x=0 y=0]"
+[28] "CastBar above target -> OK: anchor was [BOTTOM -> UIParent BOTTOM x=0 y=180]"
+[29] "Essential cooldowns above cast -> SKIP (system absent)"
+[30] "Utility cooldowns hidden -> SKIP (system absent)"
+[31] "BuffIcon viewer hidden -> SKIP (system absent)"
+[32] "BuffBar viewer hidden -> SKIP (system absent)"
+[33] "Pet left of target -> OK: anchor was [BOTTOMRIGHT -> UIParent BOTTOM x=-380 y=300]"
+[34] "Focus left of target -> OK: anchor was [TOPLEFT -> UIParent TOPLEFT x=20 y=-300]"
+[35] "LossOfControl alone at centre -> SKIP (system absent)"
+[36] "ExtraAbilities right of target -> OK: anchor was [BOTTOM -> UIParent BOTTOM x=0 y=160]"
+[37] "StanceBar above the left clusters -> SKIP (system absent)"
+[38] "PossessBar shares the stance slot -> SKIP (system absent)"
+[39] "PetActionBar above the stance slot -> SKIP (system absent)"
+[40] "VehicleLeave above extra -> OK: anchor was [BOTTOM -> UIParent BOTTOM x=0 y=220]"
+[41] "Boss frames under minimap -> SKIP (system absent)"
+[42] "Arena frames share boss slot -> SKIP (system absent)"
+[43] "Durability left of minimap -> OK: anchor was [TOPRIGHT -> UIParent TOPRIGHT x=-180 y=-20]"
+[44] "VehicleSeats left of minimap -> OK: anchor was [TOPRIGHT -> UIParent TOPRIGHT x=-180 y=-20]"
+[45] "Tooltip above right glyphs -> SKIP (system absent)"
+[46] "Buffs top-left, grow right -> SKIP (system absent)"
+[47] "Debuffs under buffs, grow right -> SKIP (system absent)"
+[48] "External defensives top -> SKIP (system absent)"
+[49] "Boss warning line 1 -> SKIP (system absent)"
+[50] "Boss warning line 2 -> SKIP (system absent)"
+[51] "Boss warning line 3 -> SKIP (system absent)"
+[52] "TimerBars under warnings -> SKIP (system absent)"
+[53] "EncounterBar top lane -> SKIP (system absent)"
+[54] "Archaeology shares encounter slot -> SKIP (system absent)"
+[55] "Boss timeline bottom of lane -> SKIP (system absent)"
+[56] "TalkingHead top centre -> SKIP (system absent)"
+[57] "Loot right of character -> SKIP (system absent)"
+[58] "Totem bar where retail keeps essential cooldowns -> OK: anchor was [BOTTOMLEFT -> UIParent BOTTOM x=-260 y=120]"
+[59] "Chat at the retail spot and size (BOTTOMLEFT 35,50, 430x170) -> OK: HeightHundreds 1->1; HeightTensAndOnes 20->70; anchor was [BOTTOMLEFT -> UIParent BOTTOMLEFT x=35 y=110]"
+[60] "C_EditMode.SaveLayouts OK"
+[61] "SetActiveLayout(4) OK"
+[62] "tracker WatchFrame -> TOPLEFT 28,-100 scale 1.33 height 300"
+[63] "tracker owner: parent=UIParent layoutParent=nil isRightManagedFrame=nil ignoreFramePositionManager=nil userPlaced=nil container.RemoveManagedFrame=no container"
+== before ==
+{"layoutName"="Classic","layoutType"=0,"systems"={1={"anchor"="BOTTOMRIGHT -> UIParent BOTTOM x=-300 y=250","settings"={1="10=0"},"system"="UnitFrame","systemIndex"=1},2={"anchor"="BOTTOMLEFT -> UIParent BOTTOM x=300 y=250","settings"={1="10=0"},"system"="UnitFrame","systemIndex"=2},3={"anchor"="TOPLEFT -> UIParent TOPLEFT x=20 y=-300","settings"={},"system"="UnitFrame","systemIndex"=3},4={"anchor"="BOTTOMRIGHT -> UIParent BOTTOM x=-380 y=300","settings"={},"system"="UnitFrame","systemIndex"=8},5={"anchor"="BOTTOMRIGHT -> MainMenuBarArtFrame BOTTOMRIGHT x=0 y=0","settings"={},"system"="Bags"},6={"anchor"="BOTTOMRIGHT -> UIParent BOTTOMRIGHT x=-10 y=10","settings"={},"system"="MicroMenu"},7={"anchor"="TOPRIGHT -> UIParent TOPRIGHT x=0 y=0","settings"={1="2=5"},"system"="Minimap"},8={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=180","settings"={},"system"="CastBar"},9={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=160","settings"={},"system"="ExtraAbilities"},10={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=220","settings"={},"system"="VehicleLeaveButton"},11={"anchor"="TOPRIGHT -> UIParent TOPRIGHT x=-180 y=-20","settings"={},"system"="DurabilityFrame"},12={"anchor"="TOPRIGHT -> UIParent TOPRIGHT x=-180 y=-20","settings"={},"system"="VehicleSeatIndicator"},13={"anchor"="BOTTOMLEFT -> UIParent BOTTOM x=-260 y=120","settings"={},"system"="TotemActionBar"},14={"anchor"="BOTTOMLEFT -> UIParent BOTTOMLEFT x=35 y=110","settings"={1="2=1",2="3=20"},"system"="ChatFrame"},15={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=6","settings"={},"system"="StatusTrackingBar"}}}
+== after ==
+{"layoutName"="Thor6in","layoutType"=1,"systems"={1={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=48","settings"={1="10=4.0"},"system"="UnitFrame","systemIndex"=1},2={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=136","settings"={1="10=4.0",2="1=1"},"system"="UnitFrame","systemIndex"=2},3={"anchor"="BOTTOM -> UIParent BOTTOM x=-206 y=254","settings"={},"system"="UnitFrame","systemIndex"=3},4={"anchor"="BOTTOM -> UIParent BOTTOM x=-194 y=202","settings"={},"system"="UnitFrame","systemIndex"=8},5={"anchor"="BOTTOMRIGHT -> MainMenuBarArtFrame BOTTOMRIGHT x=-4 y=2","settings"={},"system"="Bags"},6={"anchor"="BOTTOMRIGHT -> UIParent BOTTOMRIGHT x=-10 y=10","settings"={},"system"="MicroMenu"},7={"anchor"="TOPRIGHT -> UIParent TOPRIGHT x=-14 y=-10","settings"={1="2=3.0"},"system"="Minimap"},8={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=270","settings"={},"system"="CastBar"},9={"anchor"="BOTTOM -> UIParent BOTTOM x=167 y=199","settings"={},"system"="ExtraAbilities"},10={"anchor"="BOTTOM -> UIParent BOTTOM x=160 y=277","settings"={},"system"="VehicleLeaveButton"},11={"anchor"="TOPRIGHT -> UIParent TOPRIGHT x=-178 y=-21","settings"={},"system"="DurabilityFrame"},12={"anchor"="TOPRIGHT -> UIParent TOPRIGHT x=-178 y=-21","settings"={},"system"="VehicleSeatIndicator"},13={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=296","settings"={},"system"="TotemActionBar"},14={"anchor"="BOTTOMLEFT -> UIParent BOTTOMLEFT x=35 y=50","settings"={1="2=1",2="3=70"},"system"="ChatFrame"},15={"anchor"="BOTTOM -> UIParent BOTTOM x=0 y=6","settings"={},"system"="StatusTrackingBar"}}}
+== deferred/fatal/errors ==
+{}
+== saveLayouts ==
+[1] {"activeLayout"=4,"layouts"={1={"customField"="keep me","layoutName"="SomeoneElse","layoutType"=1,"systems"={1={"anchorInfo"={"offsetX"=5,"offsetY"=-5,"point"="TOPLEFT","relativePoint"="TOPLEFT","relativeTo"="UIParent"},"isInDefaultPosition"=true,"settings"={},"system"=2}}},2={"layoutName"="Thor6in","layoutType"=1,"systems"={1={"anchorInfo"={"offsetX"=0,"offsetY"=48,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=10,"value"=4}},"system"=3,"systemIndex"=1},2={"anchorInfo"={"offsetX"=0,"offsetY"=136,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=10,"value"=4},2={"setting"=1,"value"=1}},"system"=3,"systemIndex"=2},3={"anchorInfo"={"offsetX"=-206,"offsetY"=254,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=3,"systemIndex"=3},4={"anchorInfo"={"offsetX"=-194,"offsetY"=202,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=3,"systemIndex"=8},5={"anchorInfo"={"offsetX"=-4,"offsetY"=2,"point"="BOTTOMRIGHT","relativePoint"="BOTTOMRIGHT","relativeTo"="MainMenuBarArtFrame"},"isInDefaultPosition"=false,"settings"={},"system"=14},6={"anchorInfo"={"offsetX"=-10,"offsetY"=10,"point"="BOTTOMRIGHT","relativePoint"="BOTTOMRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=true,"settings"={},"system"=13},7={"anchorInfo"={"offsetX"=-14,"offsetY"=-10,"point"="TOPRIGHT","relativePoint"="TOPRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=2,"value"=3}},"system"=2},8={"anchorInfo"={"offsetX"=0,"offsetY"=270,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=1},9={"anchorInfo"={"offsetX"=167,"offsetY"=199,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=5},10={"anchorInfo"={"offsetX"=160,"offsetY"=277,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=9},11={"anchorInfo"={"offsetX"=-178,"offsetY"=-21,"point"="TOPRIGHT","relativePoint"="TOPRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=16},12={"anchorInfo"={"offsetX"=-178,"offsetY"=-21,"point"="TOPRIGHT","relativePoint"="TOPRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=18},13={"anchorInfo"={"offsetX"=0,"offsetY"=296,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=25},14={"anchorInfo"={"offsetX"=35,"offsetY"=50,"point"="BOTTOMLEFT","relativePoint"="BOTTOMLEFT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=2,"value"=1},2={"setting"=3,"value"=70}},"system"=8},15={"anchorInfo"={"offsetX"=0,"offsetY"=6,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=true,"settings"={},"system"=15}}}}}
+== setActiveLayout ==
+[1] 4
+== layoutStore ==
+{"activeLayout"=4,"layouts"={1={"customField"="keep me","layoutName"="SomeoneElse","layoutType"=1,"systems"={1={"anchorInfo"={"offsetX"=5,"offsetY"=-5,"point"="TOPLEFT","relativePoint"="TOPLEFT","relativeTo"="UIParent"},"isInDefaultPosition"=true,"settings"={},"system"=2}}},2={"layoutName"="Thor6in","layoutType"=1,"systems"={1={"anchorInfo"={"offsetX"=0,"offsetY"=48,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=10,"value"=4}},"system"=3,"systemIndex"=1},2={"anchorInfo"={"offsetX"=0,"offsetY"=136,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=10,"value"=4},2={"setting"=1,"value"=1}},"system"=3,"systemIndex"=2},3={"anchorInfo"={"offsetX"=-206,"offsetY"=254,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=3,"systemIndex"=3},4={"anchorInfo"={"offsetX"=-194,"offsetY"=202,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=3,"systemIndex"=8},5={"anchorInfo"={"offsetX"=-4,"offsetY"=2,"point"="BOTTOMRIGHT","relativePoint"="BOTTOMRIGHT","relativeTo"="MainMenuBarArtFrame"},"isInDefaultPosition"=false,"settings"={},"system"=14},6={"anchorInfo"={"offsetX"=-10,"offsetY"=10,"point"="BOTTOMRIGHT","relativePoint"="BOTTOMRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=true,"settings"={},"system"=13},7={"anchorInfo"={"offsetX"=-14,"offsetY"=-10,"point"="TOPRIGHT","relativePoint"="TOPRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=2,"value"=3}},"system"=2},8={"anchorInfo"={"offsetX"=0,"offsetY"=270,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=1},9={"anchorInfo"={"offsetX"=167,"offsetY"=199,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=5},10={"anchorInfo"={"offsetX"=160,"offsetY"=277,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=9},11={"anchorInfo"={"offsetX"=-178,"offsetY"=-21,"point"="TOPRIGHT","relativePoint"="TOPRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=16},12={"anchorInfo"={"offsetX"=-178,"offsetY"=-21,"point"="TOPRIGHT","relativePoint"="TOPRIGHT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=18},13={"anchorInfo"={"offsetX"=0,"offsetY"=296,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={},"system"=25},14={"anchorInfo"={"offsetX"=35,"offsetY"=50,"point"="BOTTOMLEFT","relativePoint"="BOTTOMLEFT","relativeTo"="UIParent"},"isInDefaultPosition"=false,"settings"={1={"setting"=2,"value"=1},2={"setting"=3,"value"=70}},"system"=8},15={"anchorInfo"={"offsetX"=0,"offsetY"=6,"point"="BOTTOM","relativePoint"="BOTTOM","relativeTo"="UIParent"},"isInDefaultPosition"=true,"settings"={},"system"=15}}}}}
+== bindings ==
+[1] {"action"="OPENCHAT","key"="PADRSTICK"}
+[2] {"action"="ACTIONBUTTON1","key"="PAD1"}
+[3] {"action"="ACTIONBUTTON3","key"="PAD2"}
+[4] {"action"="ACTIONBUTTON5","key"="PAD3"}
+[5] {"action"="ACTIONBUTTON7","key"="PAD4"}
+[6] {"action"="JUMP","key"="PADLSTICK"}
+SaveBindings=1
+== timers ==
+[1] 12
+[2] 3
+== hookedGlobals ==
+{"GameTooltip_SetDefaultAnchor"=1}
+== printed ==
+
+== measure.named ==
+[1] "ConsolePortBarManager | absent"
+[2] "ConsolePortToolbar | absent"
+[3] "MinimapCluster | absent"
+[4] "Minimap | absent"
+[5] "MiniMapTracking | absent"
+[6] "MiniMapTrackingButton | absent"
+[7] "MinimapZoneTextButton | absent"
+[8] "GameTimeFrame | absent"
+[9] "TimeManagerClockButton | absent"
+[10] "WatchFrame | vis=true | L=0 B=0 W=13 H=13"
+[11] "ObjectiveTrackerFrame | absent"
+[12] "QuestWatchFrame | absent"
+[13] "ChatFrame1 | absent"
+[14] "ChatFrame1EditBox | absent"
+[15] "GeneralDockManager | absent"
+[16] "BuffFrame | absent"
+[17] "DebuffFrame | absent"
+[18] "TemporaryEnchantFrame | absent"
+[19] "PlayerFrame | absent"
+[20] "TargetFrame | absent"
+[21] "TargetFrameToT | absent"
+[22] "FocusFrame | absent"
+[23] "PetFrame | absent"
+[24] "PartyFrame | absent"
+[25] "PartyMemberFrame1 | absent"
+[26] "CompactRaidFrameManager | absent"
+[27] "CompactPartyFrame | absent"
+[28] "Boss1TargetFrame | absent"
+[29] "ArenaEnemyFrames | absent"
+[30] "CastingBarFrame | absent"
+[31] "PlayerCastingBarFrame | absent"
+[32] "MainMenuBar | absent"
+[33] "MainMenuBarArtFrame | absent"
+[34] "MicroButtonAndBagsBar | absent"
+[35] "MainMenuBarBackpackButton | absent"
+[36] "CharacterMicroButton | absent"
+[37] "StatusTrackingBarManager | absent"
+[38] "MainStatusTrackingBarContainer | absent"
+[39] "MainMenuExpBar | absent"
+[40] "ReputationWatchBar | absent"
+[41] "DurabilityFrame | absent"
+[42] "VehicleSeatIndicator | absent"
+[43] "ExtraActionBarFrame | absent"
+[44] "ZoneAbilityFrame | absent"
+[45] "TalkingHeadFrame | absent"
+[46] "LootFrame | absent"
+[47] "GroupLootContainer | absent"
+[48] "GameTooltip | vis=true | L=0 B=0 W=10 H=10"
+[49] "UIErrorsFrame | absent"
+[50] "RaidWarningFrame | absent"
+[51] "RaidBossEmoteFrame | absent"
+[52] "LossOfControlFrame | absent"
+[53] "PlayerPowerBarAlt | absent"
+[54] "QueueStatusButton | absent"
+[55] "MiniMapLFGFrame | absent"
+[56] "MiniMapMailFrame | absent"
+[57] "ZoneTextFrame | absent"
+[58] "ImmersionFrame | absent"
+== measure.systems ==
+
+== measure.screen ==
+"1365.33 x 768.00"
+== trackerPoints ==
+{"height"=300,"movable"=true,"points"={1={1="TOPLEFT",2="UIParent",3="TOPLEFT",4=21,5=-75}},"scale"=1.333333,"userPlaced"=true}

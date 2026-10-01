@@ -1,0 +1,123 @@
+diff --git a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+index db2a3737..9f8f8f79 100644
+--- a/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
++++ b/app/src/main/java/app/gamenative/externaldisplay/SpanDisplayController.kt
+@@ -85,7 +85,7 @@ class SpanDisplayController(
+             teardown()
+             return
+         }
+-        if (presentation != null && presentation?.display?.displayId == target.displayId) return
++        if (presentation != null && presentation?.display?.displayId == target.displayId && presentation?.isShowing == true) return
+         teardown()
+ 
+         val w = screenW
+@@ -104,6 +104,14 @@ class SpanDisplayController(
+             return
+         }
+         presentation = p
++        p.setOnDismissListener {
++            if (presentation === p) {
++                Handler(Looper.getMainLooper()).post {
++                    teardown()
++                    update()
++                }
++            }
++        }
+         Timber.tag(TAG).i("presentation shown on display %d", target.displayId)
+ 
+         val view = XServerView(p.context, xServer, "vulkan")
+@@ -111,8 +119,8 @@ class SpanDisplayController(
+         if (r == null) {
+             Timber.tag(TAG).w("secondary XServerView has no VulkanRenderer; dismissing")
+             view.release()
+-            p.dismiss()
+             presentation = null
++            p.dismiss()
+             return
+         }
+         r.setMirror(true)
+@@ -145,6 +153,7 @@ class SpanDisplayController(
+         val p = presentation
+         if (r == null && v == null && p == null) return
+         Timber.tag(TAG).i("teardown: display=%s", p?.display?.displayId)
++        presentation = null
+         if (r != null) primary.removeMirror(r)
+         try {
+             p?.root?.removeAllViews()
+@@ -163,7 +172,6 @@ class SpanDisplayController(
+         }
+         secondaryRenderer = null
+         secondaryView = null
+-        presentation = null
+         Timber.tag(TAG).i("teardown done")
+     }
+ 
+diff --git a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+index 9d23e87c..52a51bfc 100644
+--- a/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
++++ b/app/src/main/java/app/gamenative/ui/screen/xserver/XServerScreen.kt
+@@ -2590,8 +2590,13 @@ fun XServerScreen(
+             frameLayout.addView(overlay)
+             swapInputOverlay = overlay
+ 
++            // spanEnabled is the raw config flag; span setup silently no-ops when the renderer
++            // isn't VulkanRenderer (e.g. "surfaceflinger"), so gate on the effective state instead
++            // of the raw flag or the external-display / swap controllers stay wrongly disabled.
++            val spanActive = spanEnabled && xServerView.getxServer().renderer is VulkanRenderer
++
+             val externalDisplayController =
+-                if (!swapEnabled && configuredExternalMode != ExternalDisplayInputController.Mode.OFF && !spanEnabled) {
++                if (!swapEnabled && configuredExternalMode != ExternalDisplayInputController.Mode.OFF && !spanActive) {
+                     ExternalDisplayInputController(
+                         context = context,
+                         xServer = xServerView.getxServer(),
+@@ -2605,7 +2610,7 @@ fun XServerScreen(
+                 }
+ 
+             val swapController =
+-                if (swapEnabled && !spanEnabled) {
++                if (swapEnabled && !spanActive) {
+                     val surfaceBg = ContextCompat.getColor(context, R.color.external_display_surface_background)
+                     ExternalDisplaySwapController(
+                         context = context,
+@@ -2640,7 +2645,7 @@ fun XServerScreen(
+                     null
+                 }
+             val spanController: SpanDisplayController? =
+-                if (spanEnabled) {
++                if (spanActive) {
+                     val spanXServer = xServerView.getxServer()
+                     val primaryVk = spanXServer.renderer as? VulkanRenderer
+                     if (primaryVk == null) {
+@@ -2669,6 +2674,7 @@ fun XServerScreen(
+                     externalDisplayController?.stop()
+                     swapController?.stop()
+                     spanController?.stop()
++                    PluviaApp.touchpadView?.clearAbsoluteRegion()
+                 }
+             })
+             // Don't call hideInputControls() here - let the auto-show logic below handle visibility
+diff --git a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+index 5a319194..3c03a0c0 100644
+--- a/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
++++ b/app/src/main/java/com/winlator/renderer/VulkanRenderer.java
+@@ -845,9 +845,16 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
+         }
+         synchronized (lock) {
+             if (nativeHandle != 0) {
+-                if (nativeMode) nativeDestroyScanout(nativeHandle);
+-                nativeDestroy(nativeHandle);
+-                nativeHandle = 0;
++                if (mirrorCallsInFlight.get() > 0) {
++                    // A mirror call is still in flight on the native handle after the bounded wait;
++                    // destroying now would race a use-after-free. Leak deliberately instead.
++                    android.util.Log.w("VulkanRenderer", "release(): mirrorCallsInFlight=" + mirrorCallsInFlight.get() + " after deadline, skipping nativeDestroy (deliberate leak)");
++                    nativeHandle = 0;
++                } else {
++                    if (nativeMode) nativeDestroyScanout(nativeHandle);
++                    nativeDestroy(nativeHandle);
++                    nativeHandle = 0;
++                }
+             }
+         }
+     }
